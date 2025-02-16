@@ -1,0 +1,12726 @@
+#!/bin/sh
+# This script was generated using Makeself 2.4.5
+# The license covering this archive and its contents, if any, is wholly independent of the Makeself license (GPL)
+
+ORIG_UMASK=`umask`
+if test "n" = n; then
+    umask 077
+fi
+
+CRCsum="3237033763"
+MD5="e2e50d70fe620a859968d1e1ba9b596f"
+SHA="0000000000000000000000000000000000000000000000000000000000000000"
+SIGNATURE=""
+TMPROOT=${TMPDIR:=/tmp}
+USER_PWD="$PWD"
+export USER_PWD
+ARCHIVE_DIR=`dirname "$0"`
+export ARCHIVE_DIR
+
+label="CCDC Palo Self-Extract"
+script=""
+scriptargs=""
+cleanup_script=""
+licensetxt=""
+helpheader=''
+targetdir="/opt/ccdc/palo"
+filesizes="501760"
+totalsize="501760"
+keep="y"
+nooverwrite="n"
+quiet="n"
+accept="n"
+nodiskspace="n"
+export_conf="n"
+decrypt_cmd=""
+skip="717"
+
+print_cmd_arg=""
+if type printf > /dev/null; then
+    print_cmd="printf"
+elif test -x /usr/ucb/echo; then
+    print_cmd="/usr/ucb/echo"
+else
+    print_cmd="echo"
+fi
+
+if test -d /usr/xpg4/bin; then
+    PATH=/usr/xpg4/bin:$PATH
+    export PATH
+fi
+
+if test -d /usr/sfw/bin; then
+    PATH=$PATH:/usr/sfw/bin
+    export PATH
+fi
+
+unset CDPATH
+
+MS_Printf()
+{
+    $print_cmd $print_cmd_arg "$1"
+}
+
+MS_PrintLicense()
+{
+  PAGER=${PAGER:=more}
+  if test x"$licensetxt" != x; then
+    PAGER_PATH=`exec <&- 2>&-; which $PAGER || command -v $PAGER || type $PAGER`
+    if test -x "$PAGER_PATH"; then
+      echo "$licensetxt" | $PAGER
+    else
+      echo "$licensetxt"
+    fi
+    if test x"$accept" != xy; then
+      while true
+      do
+        MS_Printf "Please type y to accept, n otherwise: "
+        read yn
+        if test x"$yn" = xn; then
+          keep=n
+          eval $finish; exit 1
+          break;
+        elif test x"$yn" = xy; then
+          break;
+        fi
+      done
+    fi
+  fi
+}
+
+MS_diskspace()
+{
+	(
+	df -kP "$1" | tail -1 | awk '{ if ($4 ~ /%/) {print $3} else {print $4} }'
+	)
+}
+
+MS_dd()
+{
+    blocks=`expr $3 / 1024`
+    bytes=`expr $3 % 1024`
+    # Test for ibs, obs and conv feature
+    if dd if=/dev/zero of=/dev/null count=1 ibs=512 obs=512 conv=sync 2> /dev/null; then
+        dd if="$1" ibs=$2 skip=1 obs=1024 conv=sync 2> /dev/null | \
+        { test $blocks -gt 0 && dd ibs=1024 obs=1024 count=$blocks ; \
+          test $bytes  -gt 0 && dd ibs=1 obs=1024 count=$bytes ; } 2> /dev/null
+    else
+        dd if="$1" bs=$2 skip=1 2> /dev/null
+    fi
+}
+
+MS_dd_Progress()
+{
+    if test x"$noprogress" = xy; then
+        MS_dd "$@"
+        return $?
+    fi
+    file="$1"
+    offset=$2
+    length=$3
+    pos=0
+    bsize=4194304
+    while test $bsize -gt $length; do
+        bsize=`expr $bsize / 4`
+    done
+    blocks=`expr $length / $bsize`
+    bytes=`expr $length % $bsize`
+    (
+        dd ibs=$offset skip=1 count=0 2>/dev/null
+        pos=`expr $pos \+ $bsize`
+        MS_Printf "     0%% " 1>&2
+        if test $blocks -gt 0; then
+            while test $pos -le $length; do
+                dd bs=$bsize count=1 2>/dev/null
+                pcent=`expr $length / 100`
+                pcent=`expr $pos / $pcent`
+                if test $pcent -lt 100; then
+                    MS_Printf "\b\b\b\b\b\b\b" 1>&2
+                    if test $pcent -lt 10; then
+                        MS_Printf "    $pcent%% " 1>&2
+                    else
+                        MS_Printf "   $pcent%% " 1>&2
+                    fi
+                fi
+                pos=`expr $pos \+ $bsize`
+            done
+        fi
+        if test $bytes -gt 0; then
+            dd bs=$bytes count=1 2>/dev/null
+        fi
+        MS_Printf "\b\b\b\b\b\b\b" 1>&2
+        MS_Printf " 100%%  " 1>&2
+    ) < "$file"
+}
+
+MS_Help()
+{
+    cat << EOH >&2
+${helpheader}Makeself version 2.4.5
+ 1) Getting help or info about $0 :
+  $0 --help   Print this message
+  $0 --info   Print embedded info : title, default target directory, embedded script ...
+  $0 --lsm    Print embedded lsm entry (or no LSM)
+  $0 --list   Print the list of files in the archive
+  $0 --check  Checks integrity of the archive
+  $0 --verify-sig key Verify signature agains a provided key id
+
+ 2) Running $0 :
+  $0 [options] [--] [additional arguments to embedded script]
+  with following options (in that order)
+  --confirm             Ask before running embedded script
+  --quiet               Do not print anything except error messages
+  --accept              Accept the license
+  --noexec              Do not run embedded script (implies --noexec-cleanup)
+  --noexec-cleanup      Do not run embedded cleanup script
+  --keep                Do not erase target directory after running
+                        the embedded script
+  --noprogress          Do not show the progress during the decompression
+  --nox11               Do not spawn an xterm
+  --nochown             Do not give the target folder to the current user
+  --chown               Give the target folder to the current user recursively
+  --nodiskspace         Do not check for available disk space
+  --target dir          Extract directly to a target directory (absolute or relative)
+                        This directory may undergo recursive chown (see --nochown).
+  --tar arg1 [arg2 ...] Access the contents of the archive through the tar command
+  --ssl-pass-src src    Use the given src as the source of password to decrypt the data
+                        using OpenSSL. See "PASS PHRASE ARGUMENTS" in man openssl.
+                        Default is to prompt the user to enter decryption password
+                        on the current terminal.
+  --cleanup-args args   Arguments to the cleanup script. Wrap in quotes to provide
+                        multiple arguments.
+  --                    Following arguments will be passed to the embedded script
+EOH
+}
+
+MS_Verify_Sig()
+{
+    GPG_PATH=`exec <&- 2>&-; which gpg || command -v gpg || type gpg`
+    MKTEMP_PATH=`exec <&- 2>&-; which mktemp || command -v mktemp || type mktemp`
+    test -x "$GPG_PATH" || GPG_PATH=`exec <&- 2>&-; which gpg || command -v gpg || type gpg`
+    test -x "$MKTEMP_PATH" || MKTEMP_PATH=`exec <&- 2>&-; which mktemp || command -v mktemp || type mktemp`
+	offset=`head -n "$skip" "$1" | wc -c | tr -d " "`
+    temp_sig=`mktemp -t XXXXX`
+    echo $SIGNATURE | base64 --decode > "$temp_sig"
+    gpg_output=`MS_dd "$1" $offset $totalsize | LC_ALL=C "$GPG_PATH" --verify "$temp_sig" - 2>&1`
+    gpg_res=$?
+    rm -f "$temp_sig"
+    if test $gpg_res -eq 0 && test `echo $gpg_output | grep -c Good` -eq 1; then
+        if test `echo $gpg_output | grep -c $sig_key` -eq 1; then
+            test x"$quiet" = xn && echo "GPG signature is good" >&2
+        else
+            echo "GPG Signature key does not match" >&2
+            exit 2
+        fi
+    else
+        test x"$quiet" = xn && echo "GPG signature failed to verify" >&2
+        exit 2
+    fi
+}
+
+MS_Check()
+{
+    OLD_PATH="$PATH"
+    PATH=${GUESS_MD5_PATH:-"$OLD_PATH:/bin:/usr/bin:/sbin:/usr/local/ssl/bin:/usr/local/bin:/opt/openssl/bin"}
+	MD5_ARG=""
+    MD5_PATH=`exec <&- 2>&-; which md5sum || command -v md5sum || type md5sum`
+    test -x "$MD5_PATH" || MD5_PATH=`exec <&- 2>&-; which md5 || command -v md5 || type md5`
+    test -x "$MD5_PATH" || MD5_PATH=`exec <&- 2>&-; which digest || command -v digest || type digest`
+    PATH="$OLD_PATH"
+
+    SHA_PATH=`exec <&- 2>&-; which shasum || command -v shasum || type shasum`
+    test -x "$SHA_PATH" || SHA_PATH=`exec <&- 2>&-; which sha256sum || command -v sha256sum || type sha256sum`
+
+    if test x"$quiet" = xn; then
+		MS_Printf "Verifying archive integrity..."
+    fi
+    offset=`head -n "$skip" "$1" | wc -c | tr -d " "`
+    fsize=`cat "$1" | wc -c | tr -d " "`
+    if test $totalsize -ne `expr $fsize - $offset`; then
+        echo " Unexpected archive size." >&2
+        exit 2
+    fi
+    verb=$2
+    i=1
+    for s in $filesizes
+    do
+		crc=`echo $CRCsum | cut -d" " -f$i`
+		if test -x "$SHA_PATH"; then
+			if test x"`basename $SHA_PATH`" = xshasum; then
+				SHA_ARG="-a 256"
+			fi
+			sha=`echo $SHA | cut -d" " -f$i`
+			if test x"$sha" = x0000000000000000000000000000000000000000000000000000000000000000; then
+				test x"$verb" = xy && echo " $1 does not contain an embedded SHA256 checksum." >&2
+			else
+				shasum=`MS_dd_Progress "$1" $offset $s | eval "$SHA_PATH $SHA_ARG" | cut -b-64`;
+				if test x"$shasum" != x"$sha"; then
+					echo "Error in SHA256 checksums: $shasum is different from $sha" >&2
+					exit 2
+				elif test x"$quiet" = xn; then
+					MS_Printf " SHA256 checksums are OK." >&2
+				fi
+				crc="0000000000";
+			fi
+		fi
+		if test -x "$MD5_PATH"; then
+			if test x"`basename $MD5_PATH`" = xdigest; then
+				MD5_ARG="-a md5"
+			fi
+			md5=`echo $MD5 | cut -d" " -f$i`
+			if test x"$md5" = x00000000000000000000000000000000; then
+				test x"$verb" = xy && echo " $1 does not contain an embedded MD5 checksum." >&2
+			else
+				md5sum=`MS_dd_Progress "$1" $offset $s | eval "$MD5_PATH $MD5_ARG" | cut -b-32`;
+				if test x"$md5sum" != x"$md5"; then
+					echo "Error in MD5 checksums: $md5sum is different from $md5" >&2
+					exit 2
+				elif test x"$quiet" = xn; then
+					MS_Printf " MD5 checksums are OK." >&2
+				fi
+				crc="0000000000"; verb=n
+			fi
+		fi
+		if test x"$crc" = x0000000000; then
+			test x"$verb" = xy && echo " $1 does not contain a CRC checksum." >&2
+		else
+			sum1=`MS_dd_Progress "$1" $offset $s | CMD_ENV=xpg4 cksum | awk '{print $1}'`
+			if test x"$sum1" != x"$crc"; then
+				echo "Error in checksums: $sum1 is different from $crc" >&2
+				exit 2
+			elif test x"$quiet" = xn; then
+				MS_Printf " CRC checksums are OK." >&2
+			fi
+		fi
+		i=`expr $i + 1`
+		offset=`expr $offset + $s`
+    done
+    if test x"$quiet" = xn; then
+		echo " All good."
+    fi
+}
+
+MS_Decompress()
+{
+    if test x"$decrypt_cmd" != x""; then
+        { eval "$decrypt_cmd" || echo " ... Decryption failed." >&2; } | eval "cat"
+    else
+        eval "cat"
+    fi
+    
+    if test $? -ne 0; then
+        echo " ... Decompression failed." >&2
+    fi
+}
+
+UnTAR()
+{
+    if test x"$quiet" = xn; then
+		tar $1vf -  2>&1 || { echo " ... Extraction failed." >&2; kill -15 $$; }
+    else
+		tar $1f -  2>&1 || { echo Extraction failed. >&2; kill -15 $$; }
+    fi
+}
+
+MS_exec_cleanup() {
+    if test x"$cleanup" = xy && test x"$cleanup_script" != x""; then
+        cleanup=n
+        cd "$tmpdir"
+        eval "\"$cleanup_script\" $scriptargs $cleanupargs"
+    fi
+}
+
+MS_cleanup()
+{
+    echo 'Signal caught, cleaning up' >&2
+    MS_exec_cleanup
+    cd "$TMPROOT"
+    rm -rf "$tmpdir"
+    eval $finish; exit 15
+}
+
+finish=true
+xterm_loop=
+noprogress=n
+nox11=n
+copy=none
+ownership=n
+verbose=n
+cleanup=y
+cleanupargs=
+sig_key=
+
+initargs="$@"
+
+while true
+do
+    case "$1" in
+    -h | --help)
+	MS_Help
+	exit 0
+	;;
+    -q | --quiet)
+	quiet=y
+	noprogress=y
+	shift
+	;;
+	--accept)
+	accept=y
+	shift
+	;;
+    --info)
+	echo Identification: "$label"
+	echo Target directory: "$targetdir"
+	echo Uncompressed size: 492 KB
+	echo Compression: none
+	if test x"n" != x""; then
+	    echo Encryption: n
+	fi
+	echo Date of packaging: Sun Feb 16 16:55:18 EST 2025
+	echo Built with Makeself version 2.4.5
+	echo Build command was: "/nix/store/7ys9lb0wy6schavmza5m0q6xb3p12vzg-makeself-2.4.5/bin/makeself \\
+    \"--nocomp\" \\
+    \"--header\" \\
+    \"/nix/store/7ys9lb0wy6schavmza5m0q6xb3p12vzg-makeself-2.4.5/share/makeself/makeself-header.sh\" \\
+    \"--target\" \\
+    \"/opt/ccdc/palo\" \\
+    \"palo/\" \\
+    \"palo.sh\" \\
+    \"CCDC Palo Self-Extract\""
+	if test x"$script" != x; then
+	    echo Script run after extraction:
+	    echo "    " $script $scriptargs
+	fi
+	if test x"" = xcopy; then
+		echo "Archive will copy itself to a temporary location"
+	fi
+	if test x"n" = xy; then
+		echo "Root permissions required for extraction"
+	fi
+	if test x"y" = xy; then
+	    echo "directory $targetdir is permanent"
+	else
+	    echo "$targetdir will be removed after extraction"
+	fi
+	exit 0
+	;;
+    --dumpconf)
+	echo LABEL=\"$label\"
+	echo SCRIPT=\"$script\"
+	echo SCRIPTARGS=\"$scriptargs\"
+    echo CLEANUPSCRIPT=\"$cleanup_script\"
+	echo archdirname=\"/opt/ccdc/palo\"
+	echo KEEP=y
+	echo NOOVERWRITE=n
+	echo COMPRESS=none
+	echo filesizes=\"$filesizes\"
+    echo totalsize=\"$totalsize\"
+	echo CRCsum=\"$CRCsum\"
+	echo MD5sum=\"$MD5sum\"
+	echo SHAsum=\"$SHAsum\"
+	echo SKIP=\"$skip\"
+	exit 0
+	;;
+    --lsm)
+cat << EOLSM
+No LSM.
+EOLSM
+	exit 0
+	;;
+    --list)
+	echo Target directory: $targetdir
+	offset=`head -n "$skip" "$0" | wc -c | tr -d " "`
+	for s in $filesizes
+	do
+	    MS_dd "$0" $offset $s | MS_Decompress | UnTAR t
+	    offset=`expr $offset + $s`
+	done
+	exit 0
+	;;
+	--tar)
+	offset=`head -n "$skip" "$0" | wc -c | tr -d " "`
+	arg1="$2"
+    shift 2 || { MS_Help; exit 1; }
+	for s in $filesizes
+	do
+	    MS_dd "$0" $offset $s | MS_Decompress | tar "$arg1" - "$@"
+	    offset=`expr $offset + $s`
+	done
+	exit 0
+	;;
+    --check)
+	MS_Check "$0" y
+	exit 0
+	;;
+    --verify-sig)
+    sig_key="$2"
+    shift 2 || { MS_Help; exit 1; }
+    MS_Verify_Sig "$0"
+    ;;
+    --confirm)
+	verbose=y
+	shift
+	;;
+	--noexec)
+	script=""
+    cleanup_script=""
+	shift
+	;;
+    --noexec-cleanup)
+    cleanup_script=""
+    shift
+    ;;
+    --keep)
+	keep=y
+	shift
+	;;
+    --target)
+	keep=y
+	targetdir="${2:-.}"
+    shift 2 || { MS_Help; exit 1; }
+	;;
+    --noprogress)
+	noprogress=y
+	shift
+	;;
+    --nox11)
+	nox11=y
+	shift
+	;;
+    --nochown)
+	ownership=n
+	shift
+	;;
+    --chown)
+        ownership=y
+        shift
+        ;;
+    --nodiskspace)
+	nodiskspace=y
+	shift
+	;;
+    --xwin)
+	if test "n" = n; then
+		finish="echo Press Return to close this window...; read junk"
+	fi
+	xterm_loop=1
+	shift
+	;;
+    --phase2)
+	copy=phase2
+	shift
+	;;
+	--ssl-pass-src)
+	if test x"n" != x"openssl"; then
+	    echo "Invalid option --ssl-pass-src: $0 was not encrypted with OpenSSL!" >&2
+	    exit 1
+	fi
+	decrypt_cmd="$decrypt_cmd -pass $2"
+    shift 2 || { MS_Help; exit 1; }
+	;;
+    --cleanup-args)
+    cleanupargs="$2"
+    shift 2 || { MS_Help; exit 1; }
+    ;;
+    --)
+	shift
+	break ;;
+    -*)
+	echo Unrecognized flag : "$1" >&2
+	MS_Help
+	exit 1
+	;;
+    *)
+	break ;;
+    esac
+done
+
+if test x"$quiet" = xy -a x"$verbose" = xy; then
+	echo Cannot be verbose and quiet at the same time. >&2
+	exit 1
+fi
+
+if test x"n" = xy -a `id -u` -ne 0; then
+	echo "Administrative privileges required for this archive (use su or sudo)" >&2
+	exit 1	
+fi
+
+if test x"$copy" \!= xphase2; then
+    MS_PrintLicense
+fi
+
+case "$copy" in
+copy)
+    tmpdir="$TMPROOT"/makeself.$RANDOM.`date +"%y%m%d%H%M%S"`.$$
+    mkdir "$tmpdir" || {
+	echo "Could not create temporary directory $tmpdir" >&2
+	exit 1
+    }
+    SCRIPT_COPY="$tmpdir/makeself"
+    echo "Copying to a temporary location..." >&2
+    cp "$0" "$SCRIPT_COPY"
+    chmod +x "$SCRIPT_COPY"
+    cd "$TMPROOT"
+    exec "$SCRIPT_COPY" --phase2 -- $initargs
+    ;;
+phase2)
+    finish="$finish ; rm -rf `dirname $0`"
+    ;;
+esac
+
+if test x"$nox11" = xn; then
+    if tty -s; then                 # Do we have a terminal?
+	:
+    else
+        if test x"$DISPLAY" != x -a x"$xterm_loop" = x; then  # No, but do we have X?
+            if xset q > /dev/null 2>&1; then # Check for valid DISPLAY variable
+                GUESS_XTERMS="xterm gnome-terminal rxvt dtterm eterm Eterm xfce4-terminal lxterminal kvt konsole aterm terminology"
+                for a in $GUESS_XTERMS; do
+                    if type $a >/dev/null 2>&1; then
+                        XTERM=$a
+                        break
+                    fi
+                done
+                chmod a+x $0 || echo Please add execution rights on $0
+                if test `echo "$0" | cut -c1` = "/"; then # Spawn a terminal!
+                    exec $XTERM -e "$0 --xwin $initargs"
+                else
+                    exec $XTERM -e "./$0 --xwin $initargs"
+                fi
+            fi
+        fi
+    fi
+fi
+
+if test x"$targetdir" = x.; then
+    tmpdir="."
+else
+    if test x"$keep" = xy; then
+	if test x"$nooverwrite" = xy && test -d "$targetdir"; then
+            echo "Target directory $targetdir already exists, aborting." >&2
+            exit 1
+	fi
+	if test x"$quiet" = xn; then
+	    echo "Creating directory $targetdir" >&2
+	fi
+	tmpdir="$targetdir"
+	dashp="-p"
+    else
+	tmpdir="$TMPROOT/selfgz$$$RANDOM"
+	dashp=""
+    fi
+    mkdir $dashp "$tmpdir" || {
+	echo 'Cannot create target directory' $tmpdir >&2
+	echo 'You should try option --target dir' >&2
+	eval $finish
+	exit 1
+    }
+fi
+
+location="`pwd`"
+if test x"$SETUP_NOCHECK" != x1; then
+    MS_Check "$0"
+fi
+offset=`head -n "$skip" "$0" | wc -c | tr -d " "`
+
+if test x"$verbose" = xy; then
+	MS_Printf "About to extract 492 KB in $tmpdir ... Proceed ? [Y/n] "
+	read yn
+	if test x"$yn" = xn; then
+		eval $finish; exit 1
+	fi
+fi
+
+if test x"$quiet" = xn; then
+    # Decrypting with openssl will ask for password,
+    # the prompt needs to start on new line
+	if test x"n" = x"openssl"; then
+	    echo "Decrypting and uncompressing $label..."
+	else
+        MS_Printf "Uncompressing $label"
+	fi
+fi
+res=3
+if test x"$keep" = xn; then
+    trap MS_cleanup 1 2 3 15
+fi
+
+if test x"$nodiskspace" = xn; then
+    leftspace=`MS_diskspace "$tmpdir"`
+    if test -n "$leftspace"; then
+        if test "$leftspace" -lt 492; then
+            echo
+            echo "Not enough space left in "`dirname $tmpdir`" ($leftspace KB) to decompress $0 (492 KB)" >&2
+            echo "Use --nodiskspace option to skip this check and proceed anyway" >&2
+            if test x"$keep" = xn; then
+                echo "Consider setting TMPDIR to a directory with more free space."
+            fi
+            eval $finish; exit 1
+        fi
+    fi
+fi
+
+for s in $filesizes
+do
+    if MS_dd_Progress "$0" $offset $s | MS_Decompress | ( cd "$tmpdir"; umask $ORIG_UMASK ; UnTAR xp ) 1>/dev/null; then
+		if test x"$ownership" = xy; then
+			(cd "$tmpdir"; chown -R `id -u` .;  chgrp -R `id -g` .)
+		fi
+    else
+		echo >&2
+		echo "Unable to decompress $0" >&2
+		eval $finish; exit 1
+    fi
+    offset=`expr $offset + $s`
+done
+if test x"$quiet" = xn; then
+	echo
+fi
+
+cd "$tmpdir"
+res=0
+if test x"$script" != x; then
+    if test x"$export_conf" = x"y"; then
+        MS_BUNDLE="$0"
+        MS_LABEL="$label"
+        MS_SCRIPT="$script"
+        MS_SCRIPTARGS="$scriptargs"
+        MS_ARCHDIRNAME="$archdirname"
+        MS_KEEP="$KEEP"
+        MS_NOOVERWRITE="$NOOVERWRITE"
+        MS_COMPRESS="$COMPRESS"
+        MS_CLEANUP="$cleanup"
+        export MS_BUNDLE MS_LABEL MS_SCRIPT MS_SCRIPTARGS
+        export MS_ARCHDIRNAME MS_KEEP MS_NOOVERWRITE MS_COMPRESS
+    fi
+
+    if test x"$verbose" = x"y"; then
+		MS_Printf "OK to execute: $script $scriptargs $* ? [Y/n] "
+		read yn
+		if test x"$yn" = x -o x"$yn" = xy -o x"$yn" = xY; then
+			eval "\"$script\" $scriptargs \"\$@\""; res=$?;
+		fi
+    else
+		eval "\"$script\" $scriptargs \"\$@\""; res=$?
+    fi
+    if test "$res" -ne 0; then
+		test x"$verbose" = xy && echo "The program '$script' returned an error code ($res)" >&2
+    fi
+fi
+
+MS_exec_cleanup
+
+if test x"$keep" = xn; then
+    cd "$TMPROOT"
+    rm -rf "$tmpdir"
+fi
+eval $finish; exit $res
+./candidate-config.xml                                                                              0000644 0001750 0000355 00000720577 14751162272 015255  0                                                                                                    ustar 00collin                          syncthing                                                                                                                                                                                                              <?xml version="1.0"?>
+<config urldb="paloaltonetworks" version="11.0.0" detail-version="11.0.0">
+  <mgt-config>
+    <users>
+      <entry name="admin">
+        <phash>$1$utimyspd$wlmtxZ7QkOWgUUw/XzgG.1</phash>
+        <permissions>
+          <role-based>
+            <superuser>yes</superuser>
+          </role-based>
+        </permissions>
+        <preferences>
+          <saved-log-query>
+            <traffic>
+              <entry name="From-Docker">
+                <query>( addr.src in 172.20.240.10 )</query>
+              </entry>
+              <entry name="From-Debian">
+                <query>( addr.src in 172.20.240.20 )</query>
+              </entry>
+              <entry name="From-WebSrv">
+                <query>( addr.src in 172.20.242.10 )</query>
+              </entry>
+              <entry name="From-AD">
+                <query>( addr.src in 172.20.242.200 )</query>
+              </entry>
+              <entry name="From-Wkst">
+                <query>( addr.src in 172.20.242.30 )</query>
+              </entry>
+              <entry name="From-Splunk">
+                <query>( addr.src in 172.20.241.20 )</query>
+              </entry>
+              <entry name="From-Ecomm">
+                <query>( addr.src in 172.20.241.30 )</query>
+              </entry>
+              <entry name="From-Mail">
+                <query>( addr.src in 172.20.241.40 )</query>
+              </entry>
+            </traffic>
+          </saved-log-query>
+        </preferences>
+      </entry>
+    </users>
+  </mgt-config>
+  <shared>
+    <ssl-decrypt>
+      <ssl-exclude-cert/>
+      <trusted-root-CA/>
+    </ssl-decrypt>
+    <application/>
+    <application-group/>
+    <service/>
+    <service-group/>
+    <botnet>
+      <configuration>
+        <http>
+          <dynamic-dns>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </dynamic-dns>
+          <malware-sites>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </malware-sites>
+          <recent-domains>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </recent-domains>
+          <ip-domains>
+            <enabled>yes</enabled>
+            <threshold>10</threshold>
+          </ip-domains>
+          <executables-from-unknown-sites>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </executables-from-unknown-sites>
+        </http>
+        <other-applications>
+          <irc>yes</irc>
+        </other-applications>
+        <unknown-applications>
+          <unknown-tcp>
+            <destinations-per-hour>10</destinations-per-hour>
+            <sessions-per-hour>10</sessions-per-hour>
+            <session-length>
+              <maximum-bytes>100</maximum-bytes>
+              <minimum-bytes>50</minimum-bytes>
+            </session-length>
+          </unknown-tcp>
+          <unknown-udp>
+            <destinations-per-hour>10</destinations-per-hour>
+            <sessions-per-hour>10</sessions-per-hour>
+            <session-length>
+              <maximum-bytes>100</maximum-bytes>
+              <minimum-bytes>50</minimum-bytes>
+            </session-length>
+          </unknown-udp>
+        </unknown-applications>
+      </configuration>
+      <report>
+        <topn>100</topn>
+        <scheduled>yes</scheduled>
+      </report>
+    </botnet>
+    <profiles>
+      <decryption/>
+      <custom-url-category/>
+    </profiles>
+    <admin-role/>
+    <ssl-tls-service-profile/>
+    <content-preview>
+      <application/>
+      <application-type>
+        <category>
+          <entry name="saas" id="6">
+            <subcategory>
+              <entry name="vertical-industry" id="32"/>
+              <entry name="marketing" id="33"/>
+              <entry name="hr" id="34"/>
+              <entry name="erp" id="35"/>
+              <entry name="it-infrastructure" id="36"/>
+              <entry name="sales" id="37"/>
+              <entry name="development" id="38"/>
+              <entry name="commerce" id="39"/>
+              <entry name="security" id="40"/>
+              <entry name="customer-service" id="41"/>
+              <entry name="it-management" id="42"/>
+              <entry name="content-management" id="43"/>
+              <entry name="collaboration-productivity" id="44"/>
+              <entry name="office" id="45"/>
+              <entry name="analytics" id="46"/>
+              <entry name="digital-advertising" id="47"/>
+              <entry name="design" id="48"/>
+              <entry name="supply-chain-logistics" id="49"/>
+              <entry name="hosting" id="50"/>
+              <entry name="artificial-intelligence" id="51"/>
+              <entry name="cad-plm" id="52"/>
+              <entry name="governance-risk-compliance" id="53"/>
+              <entry name="iot-management" id="54"/>
+              <entry name="b2b-marketplace-platforms" id="55"/>
+              <entry name="ar-vr" id="56"/>
+              <entry name="data-privacy" id="57"/>
+              <entry name="email" id="58"/>
+              <entry name="erp-crm" id="59"/>
+              <entry name="file-sharing" id="60"/>
+              <entry name="management" id="61"/>
+              <entry name="storage-backup" id="62"/>
+              <entry name="internet-conferencing" id="63"/>
+              <entry name="remote-access" id="64"/>
+              <entry name="general-business" id="65"/>
+              <entry name="internet-utility" id="66"/>
+              <entry name="office-programs" id="67"/>
+              <entry name="voip-video" id="68"/>
+              <entry name="software-development" id="69"/>
+              <entry name="social-business" id="70"/>
+              <entry name="web-posting" id="71"/>
+              <entry name="social-networking" id="72"/>
+              <entry name="photo-video" id="73"/>
+              <entry name="infrastructure" id="74"/>
+              <entry name="instant-messaging" id="75"/>
+              <entry name="marketing" id="76"/>
+              <entry name="database" id="77"/>
+              <entry name="auth-service" id="78"/>
+              <entry name="general-business" id="79"/>
+              <entry name="audio-streaming" id="80"/>
+            </subcategory>
+          </entry>
+        </category>
+        <technology/>
+      </application-type>
+    </content-preview>
+    <log-settings>
+      <syslog>
+        <entry name="Wazuh-Logging">
+          <server>
+            <entry name="Wazuh">
+              <transport>UDP</transport>
+              <port>514</port>
+              <format>BSD</format>
+              <server>172.20.241.20</server>
+              <facility>LOG_USER</facility>
+            </entry>
+          </server>
+        </entry>
+      </syslog>
+      <system>
+        <match-list>
+          <entry name="PA-SysLog">
+            <send-syslog>
+              <member>Wazuh-Logging</member>
+            </send-syslog>
+            <filter>All Logs</filter>
+            <send-to-panorama>yes</send-to-panorama>
+          </entry>
+        </match-list>
+      </system>
+      <config>
+        <match-list>
+          <entry name="PA-ConfigLog">
+            <send-syslog>
+              <member>Wazuh-Logging</member>
+            </send-syslog>
+            <filter>All Logs</filter>
+            <send-to-panorama>yes</send-to-panorama>
+          </entry>
+        </match-list>
+      </config>
+      <iptag>
+        <match-list>
+          <entry name="PA-IPTagLog">
+            <send-syslog>
+              <member>Wazuh-Logging</member>
+            </send-syslog>
+            <filter>All Logs</filter>
+            <send-to-panorama>yes</send-to-panorama>
+          </entry>
+        </match-list>
+      </iptag>
+    </log-settings>
+  </shared>
+  <devices>
+    <entry name="localhost.localdomain">
+      <network>
+        <interface>
+          <ethernet>
+            <entry name="ethernet1/1">
+              <link-speed>auto</link-speed>
+              <link-duplex>auto</link-duplex>
+              <link-state>auto</link-state>
+              <comment>PUBLIC</comment>
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                      <min-interval>200</min-interval>
+                      <max-interval>600</max-interval>
+                      <hop-limit>64</hop-limit>
+                      <reachable-time>unspecified</reachable-time>
+                      <retransmission-timer>unspecified</retransmission-timer>
+                      <lifetime>1800</lifetime>
+                      <managed-flag>no</managed-flag>
+                      <other-flag>no</other-flag>
+                      <enable-consistency-check>no</enable-consistency-check>
+                      <link-mtu>unspecified</link-mtu>
+                    </router-advertisement>
+                    <enable-dad>no</enable-dad>
+                    <reachable-time>30</reachable-time>
+                    <ns-interval>1</ns-interval>
+                    <dad-attempts>1</dad-attempts>
+                  </neighbor-discovery>
+                  <enabled>no</enabled>
+                  <interface-id>EUI-64</interface-id>
+                </ipv6>
+                <untagged-sub-interface>no</untagged-sub-interface>
+                <interface-management-profile>Base</interface-management-profile>
+                <ip>
+                  <entry name="172.20.241.254/24"/>
+                </ip>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/2">
+              <link-speed>auto</link-speed>
+              <link-duplex>auto</link-duplex>
+              <link-state>auto</link-state>
+              <comment>INTERNAL</comment>
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                      <min-interval>200</min-interval>
+                      <max-interval>600</max-interval>
+                      <hop-limit>64</hop-limit>
+                      <reachable-time>unspecified</reachable-time>
+                      <retransmission-timer>unspecified</retransmission-timer>
+                      <lifetime>1800</lifetime>
+                      <managed-flag>no</managed-flag>
+                      <other-flag>no</other-flag>
+                      <enable-consistency-check>no</enable-consistency-check>
+                      <link-mtu>unspecified</link-mtu>
+                    </router-advertisement>
+                    <enable-dad>no</enable-dad>
+                    <reachable-time>30</reachable-time>
+                    <ns-interval>1</ns-interval>
+                    <dad-attempts>1</dad-attempts>
+                  </neighbor-discovery>
+                  <enabled>no</enabled>
+                  <interface-id>EUI-64</interface-id>
+                </ipv6>
+                <untagged-sub-interface>no</untagged-sub-interface>
+                <interface-management-profile>Base</interface-management-profile>
+                <ip>
+                  <entry name="172.20.240.254/24"/>
+                </ip>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/3">
+              <link-speed>auto</link-speed>
+              <link-duplex>auto</link-duplex>
+              <link-state>auto</link-state>
+              <comment>EXTERNAL</comment>
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                      <min-interval>200</min-interval>
+                      <max-interval>600</max-interval>
+                      <hop-limit>64</hop-limit>
+                      <reachable-time>unspecified</reachable-time>
+                      <retransmission-timer>unspecified</retransmission-timer>
+                      <lifetime>1800</lifetime>
+                      <managed-flag>no</managed-flag>
+                      <other-flag>no</other-flag>
+                      <enable-consistency-check>no</enable-consistency-check>
+                      <link-mtu>unspecified</link-mtu>
+                    </router-advertisement>
+                    <enable-dad>no</enable-dad>
+                    <reachable-time>30</reachable-time>
+                    <ns-interval>1</ns-interval>
+                    <dad-attempts>1</dad-attempts>
+                  </neighbor-discovery>
+                  <enabled>no</enabled>
+                  <interface-id>EUI-64</interface-id>
+                </ipv6>
+                <untagged-sub-interface>no</untagged-sub-interface>
+                <interface-management-profile>Base</interface-management-profile>
+                <ip>
+                  <entry name="172.31.23.2/29"/>
+                </ip>
+                <ndp-proxy>
+                  <enabled>no</enabled>
+                </ndp-proxy>
+                <lldp>
+                  <enable>no</enable>
+                </lldp>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/4">
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                    </router-advertisement>
+                  </neighbor-discovery>
+                </ipv6>
+                <ip>
+                  <entry name="172.20.242.254/24"/>
+                </ip>
+                <interface-management-profile>Base</interface-management-profile>
+              </layer3>
+              <comment>USER</comment>
+            </entry>
+          </ethernet>
+        </interface>
+        <virtual-wire/>
+        <profiles>
+          <monitor-profile/>
+          <interface-management-profile>
+            <entry name="Base">
+              <http>no</http>
+              <https>yes</https>
+              <http-ocsp>no</http-ocsp>
+              <ssh>yes</ssh>
+              <snmp>no</snmp>
+              <userid-service>no</userid-service>
+              <ping>yes</ping>
+              <response-pages>no</response-pages>
+              <telnet>no</telnet>
+            </entry>
+          </interface-management-profile>
+          <zone-protection-profile>
+            <entry name="ZoneLock">
+              <flood>
+                <tcp-syn>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </tcp-syn>
+                <udp>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </udp>
+                <icmp>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </icmp>
+                <icmpv6>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </icmpv6>
+                <other-ip>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </other-ip>
+              </flood>
+              <net-inspection>
+                <rule/>
+              </net-inspection>
+              <scan>
+                <entry name="8001">
+                  <action>
+                    <block/>
+                  </action>
+                  <interval>2</interval>
+                  <threshold>100</threshold>
+                </entry>
+                <entry name="8002">
+                  <action>
+                    <block/>
+                  </action>
+                  <interval>10</interval>
+                  <threshold>100</threshold>
+                </entry>
+                <entry name="8003">
+                  <action>
+                    <block/>
+                  </action>
+                  <interval>2</interval>
+                  <threshold>100</threshold>
+                </entry>
+              </scan>
+              <discard-ip-spoof>yes</discard-ip-spoof>
+            </entry>
+          </zone-protection-profile>
+        </profiles>
+        <qos>
+          <profile>
+            <entry name="default">
+              <class-bandwidth-type>
+                <mbps>
+                  <class>
+                    <entry name="class1">
+                      <priority>real-time</priority>
+                    </entry>
+                    <entry name="class2">
+                      <priority>high</priority>
+                    </entry>
+                    <entry name="class3">
+                      <priority>high</priority>
+                    </entry>
+                    <entry name="class4">
+                      <priority>medium</priority>
+                    </entry>
+                    <entry name="class5">
+                      <priority>medium</priority>
+                    </entry>
+                    <entry name="class6">
+                      <priority>low</priority>
+                    </entry>
+                    <entry name="class7">
+                      <priority>low</priority>
+                    </entry>
+                    <entry name="class8">
+                      <priority>low</priority>
+                    </entry>
+                  </class>
+                </mbps>
+              </class-bandwidth-type>
+            </entry>
+          </profile>
+        </qos>
+        <virtual-router>
+          <entry name="RT1">
+            <protocol>
+              <bgp>
+                <enable>no</enable>
+                <dampening-profile>
+                  <entry name="default">
+                    <cutoff>1.25</cutoff>
+                    <reuse>0.5</reuse>
+                    <max-hold-time>900</max-hold-time>
+                    <decay-half-life-reachable>300</decay-half-life-reachable>
+                    <decay-half-life-unreachable>900</decay-half-life-unreachable>
+                    <enable>yes</enable>
+                  </entry>
+                </dampening-profile>
+                <routing-options>
+                  <med>
+                    <always-compare-med>no</always-compare-med>
+                    <deterministic-med-comparison>yes</deterministic-med-comparison>
+                  </med>
+                  <aggregate>
+                    <aggregate-med>yes</aggregate-med>
+                  </aggregate>
+                  <graceful-restart>
+                    <enable>yes</enable>
+                    <stale-route-time>120</stale-route-time>
+                    <local-restart-time>120</local-restart-time>
+                    <max-peer-restart-time>120</max-peer-restart-time>
+                  </graceful-restart>
+                  <as-format>2-byte</as-format>
+                  <default-local-preference>100</default-local-preference>
+                </routing-options>
+                <reject-default-route>yes</reject-default-route>
+                <allow-redist-default-route>no</allow-redist-default-route>
+                <install-route>no</install-route>
+              </bgp>
+              <rip>
+                <enable>no</enable>
+              </rip>
+              <ospf>
+                <enable>no</enable>
+              </ospf>
+              <ospfv3>
+                <enable>no</enable>
+              </ospfv3>
+            </protocol>
+            <admin-dists>
+              <static>10</static>
+              <ospf-int>30</ospf-int>
+              <ospf-ext>110</ospf-ext>
+              <ibgp>200</ibgp>
+              <ebgp>20</ebgp>
+              <rip>120</rip>
+            </admin-dists>
+            <interface>
+              <member>ethernet1/1</member>
+              <member>ethernet1/2</member>
+              <member>ethernet1/3</member>
+              <member>ethernet1/4</member>
+            </interface>
+            <routing-table>
+              <ip>
+                <static-route>
+                  <entry name="default">
+                    <path-monitor>
+                      <enable>no</enable>
+                      <failure-condition>any</failure-condition>
+                      <hold-time>2</hold-time>
+                    </path-monitor>
+                    <nexthop>
+                      <ip-address>172.31.23.1</ip-address>
+                    </nexthop>
+                    <bfd>
+                      <profile>None</profile>
+                    </bfd>
+                    <interface>ethernet1/3</interface>
+                    <metric>10</metric>
+                    <destination>0.0.0.0/0</destination>
+                    <route-table>
+                      <unicast/>
+                    </route-table>
+                  </entry>
+                </static-route>
+              </ip>
+            </routing-table>
+            <ecmp>
+              <algorithm>
+                <ip-modulo/>
+              </algorithm>
+            </ecmp>
+          </entry>
+        </virtual-router>
+        <ike>
+          <crypto-profiles>
+            <ike-crypto-profiles/>
+            <ipsec-crypto-profiles/>
+            <global-protect-app-crypto-profiles>
+              <entry name="default">
+                <encryption>
+                  <member>aes-128-cbc</member>
+                </encryption>
+                <authentication>
+                  <member>sha1</member>
+                </authentication>
+              </entry>
+            </global-protect-app-crypto-profiles>
+          </crypto-profiles>
+          <gateway/>
+        </ike>
+        <tunnel>
+          <ipsec/>
+          <global-protect-gateway/>
+        </tunnel>
+        <dhcp>
+          <interface>
+            <entry name="ethernet1/4">
+              <server>
+                <option>
+                  <lease>
+                    <timeout>1440</timeout>
+                  </lease>
+                  <gateway>172.20.242.254</gateway>
+                  <dns>
+                    <primary>172.20.241.27</primary>
+                    <secondary>172.20.240.23</secondary>
+                  </dns>
+                </option>
+                <ip-pool>
+                  <member>172.20.242.101-172.20.242.150</member>
+                </ip-pool>
+                <mode>enabled</mode>
+                <probe-ip>yes</probe-ip>
+              </server>
+            </entry>
+            <entry name="ethernet1/1">
+              <server>
+                <option>
+                  <lease>
+                    <timeout>1440</timeout>
+                  </lease>
+                  <gateway>172.20.241.254</gateway>
+                </option>
+                <ip-pool>
+                  <member>172.20.241.101-172.20.241.150</member>
+                </ip-pool>
+                <mode>enabled</mode>
+                <probe-ip>yes</probe-ip>
+              </server>
+            </entry>
+            <entry name="ethernet1/2">
+              <server>
+                <option>
+                  <lease>
+                    <timeout>1440</timeout>
+                  </lease>
+                  <gateway>172.20.240.254</gateway>
+                </option>
+                <ip-pool>
+                  <member>172.20.240.101-172.20.240.150</member>
+                </ip-pool>
+                <mode>enabled</mode>
+                <probe-ip>yes</probe-ip>
+              </server>
+            </entry>
+          </interface>
+        </dhcp>
+        <dns-proxy/>
+      </network>
+      <deviceconfig>
+        <system>
+          <ip-address>172.20.242.150</ip-address>
+          <netmask>255.255.255.0</netmask>
+          <update-server>updates.paloaltonetworks.com</update-server>
+          <update-schedule>
+            <threats>
+              <recurring>
+                <weekly>
+                  <day-of-week>wednesday</day-of-week>
+                  <at>01:02</at>
+                  <action>download-only</action>
+                </weekly>
+              </recurring>
+            </threats>
+          </update-schedule>
+          <timezone>US/Central</timezone>
+          <service>
+            <disable-telnet>yes</disable-telnet>
+            <disable-http>yes</disable-http>
+            <disable-snmp>yes</disable-snmp>
+          </service>
+          <snmp-setting>
+            <snmp-system/>
+          </snmp-setting>
+          <hostname>PA-VM</hostname>
+          <default-gateway>172.20.242.254</default-gateway>
+          <dns-setting>
+            <servers>
+              <primary>172.20.242.200</primary>
+              <secondary>172.20.240.20</secondary>
+            </servers>
+          </dns-setting>
+          <server-verification>yes</server-verification>
+          <ntp-servers>
+            <primary-ntp-server>
+              <ntp-server-address>172.20.240.20</ntp-server-address>
+              <authentication-type>
+                <none/>
+              </authentication-type>
+            </primary-ntp-server>
+          </ntp-servers>
+        </system>
+        <setting>
+          <custom-logo>
+            <pdf-report-header>
+              <name>logo_pan.gif</name>
+              <content>
+/9j/4AAQSkZJRgABAQIAOwA7AAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8L
+CwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUF
+BQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4e
+Hh4eHh4eHh4eHh4eHh7/wAARCAHqAkgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEA
+AAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIh
+MUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6
+Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZ
+mqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx
+8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA
+AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAV
+YnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hp
+anN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE
+xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD7
+LooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiig
+AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACuU+IPxD8J+BbUS6/qaxz
+uu6K0iG+eT6KOg9zge9ed/tB/GyPwgZfDfhh459eK4nnIDJZg+3RpPY8DvnpXyPq
+d/e6nfzX+o3U13dzsXlmmcs7n1JNd2HwbqLmlojzcXmCpPkhqz3rxh+09rt1I8Ph
+bRLTToegmuyZpT7hRhV+h3V51qXxl+Jt+5ebxffR57W6pCB/3worgaK9KOHpR2ie
+PPFVpvWTOv8A+Fn/ABE/6HXXf/A1/wDGj/hZ/wARP+h113/wNf8AxrkKKv2cOyM/
+a1P5mdf/AMLP+In/AEOuu/8Aga/+NH/Cz/iJ/wBDrrv/AIGv/jXIUUezh2Qe1qfz
+M6//AIWf8RP+h113/wADX/xo/wCFn/ET/oddd/8AA1/8a5Cij2cOyD2tT+ZnX/8A
+Cz/iJ/0Ouu/+Br/40f8ACz/iJ/0Ouu/+Br/41yFFHs4dkHtan8zOv/4Wf8RP+h11
+3/wNf/Gj/hZ/xE/6HXXf/A1/8a5Cij2cOyD2tT+ZnX/8LP8AiJ/0Ouu/+Br/AONH
+/Cz/AIif9Drrv/ga/wDjXIUUezh2Qe1qfzM6/wD4Wf8AET/oddd/8DX/AMaP+Fn/
+ABE/6HXXf/A1/wDGuQoo9nDsg9rU/mZ1/wDws/4if9Drrv8A4Gv/AI0f8LP+In/Q
+667/AOBr/wCNchRR7OHZB7Wp/Mzr/wDhZ/xE/wCh113/AMDX/wAaP+Fn/ET/AKHX
+Xf8AwNf/ABrkKKPZw7IPa1P5mdf/AMLP+In/AEOuu/8Aga/+NH/Cz/iJ/wBDrrv/
+AIGv/jXIUUezh2Qe1qfzM6//AIWf8RP+h113/wADX/xo/wCFn/ET/oddd/8AA1/8
+a5Cij2cOyD2tT+ZnX/8ACz/iJ/0Ouu/+Br/40q/FD4iqcjxrrn43jn+tcfRR7OHZ
+B7Wp/M/vPS9F+OvxO0yRT/wkZvYx1ju7eOQH8cbvyNer+Bv2nrOeSO28ZaIbMnhr
+ywJeMe5jb5gPoWPtXy7RWc8LSnujanjK1N6S+8/R/wAO65pHiLS49U0PUbe/s5Pu
+ywvkZ9COoPscEVo1+eXgDxr4h8D60uqaBetCxwJoW+aKdf7rr3Hv1HYivtj4RfEb
+R/iL4f8At1j/AKPfQYW9smbLQse49UPOG/kQRXl4jCyparVHtYTGxr+69GdrRRRX
+IdwUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRR
+RQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFeb/ALQfxDHgDwW0lm6f2zqB
+MNip52HHzSkeigj8SvbNekV8MftI+LH8VfFPUjHLvsdNY2NqAeMISHb3y+459Mel
+dWEo+1qa7I48dXdGlpuzzq4mluLiS4uJXlmlYvI7tlmYnJJJ6kmo6KK9w+aCiiig
+QUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQ
+AUUUUAFdF8OvF2qeCPFdpr+lv88J2zQk4WeI/eRvY/oQD2rnaKTSkrMqMnF3W5+j
+3hbW9P8AEnh6x13S5fNs72ESxnuM9VPoQcgj1Bor5/8A2LPFjy2+reDLqXIhH26z
+BPRSQsqj2yUOPdqK+fr0/ZTcT6nDVvbU1M+kqKKKyNwooooAKKKKACiiigAooooA
+KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA
+KKKKACiiigDN8U6j/ZHhjVdW4/0KymuOf9hC39K/OOR3kkaSRizsSzMTkknvX6Bf
+GRivwn8VkHH/ABKLkfnGwr8+69XLl7smeJmz96KCiiivRPICiiigAooooAKKKKAC
+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP
+RP2b9UfSvjP4fkDYS4ma1cf3hIhUD/voqfworD+EbFfir4TIOP8AidWg/OZaK8nM
+F76fke9lT/dyXmfoRRRRXnnqBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUU
+UUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk
+3iv/ALBNx/6LNfn5X6B/Gb/kk3iv/sE3H/os1+fletl3wM8PNvjj6BRRRXoHkhRR
+RQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRR
+RQAUUUUAFFFFAHT/AAm/5Kp4T/7Ddn/6PSij4Tf8lU8J/wDYbs//AEelFeVmPxRP
+cyn4Jep+hNFFFecesFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUU
+AFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAcl8Zv8Akk3iv/sE
+3H/os1+flfoH8Zv+STeK/wDsE3H/AKLNfn5XrZd8DPDzb44+gUUUV6B5IUUUUAFF
+FFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFTWdtPeXUdraxNLNI
+21FHc16XoXgHTbaFX1Qm8nI5UMVjX6YwT9T+VeRm+e4PKYKWIlq9ktW/68zWnSlU
+2PLqK9jvvBvh66iKCxEDYwHhYqR+HQ/iK8u8SaRPomqvYzsHAAaOQDAdD0OO3Qj6
+g1zZNxLgs3k4UbqS1s9HburNodSjKnqzNooor6AxCiiigAooooA6f4Tf8lU8J/8A
+Ybs//R6UUfCb/kqnhP8A7Ddn/wCj0orysx+KJ7mU/BL1P0Jooorzj1gooooAKKKK
+ACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKK
+ACiiigAooooAKKKKACiiigDkvjN/ySbxX/2Cbj/0Wa/Pyv0D+M3/ACSbxX/2Cbj/
+ANFmvz8r1su+Bnh5t8cfQKKKK9A8kKKKKACiiigAooooAKKKKACiiigAooooAKKK
+KACiivfv2XfhJZeJUPjDxNbC40yKUpZWjj5Lh1+87jugPGO5BzwMHOrVjSjzSNqN
+GVafJE8i8PeCPF/iGD7RovhrVL6DtNFbMYz/AMCxj9apeIfDuveHbhbfXdHvtNkb
+lBcwNHv91JGD+Ffo1FGkUaxRIqRoAqqowFA6ACsnxj4b0jxZ4eudD1q1We1uFI5H
+zRt2dT2YdjXnrMXzarQ9SWUrl0lqfnPRWh4l0ubQ/EWpaLcMGlsLqW2dgOGKMVJ/
+HFZ9eonfU8Zqzsz0D4RaejPeanIgLJiGI+ndv/Zf1r0OuX+F9uIfCcUgPNxK8h/A
+7f8A2Wuor8F4txTxObVnfSL5V8tPzuepQjamgrzn4wtF9r05RjzRG5b125GP5GvR
+q8m+KNwJ/Fbxgf8AHvCkZ985b/2avQ4Douea8y+zFv8AJfqRiXamcrRRRX7UeaFF
+FFABRRRQB0/wm/5Kp4T/AOw3Z/8Ao9KKPhN/yVTwn/2G7P8A9HpRXlZj8UT3Mp+C
+XqfoTRRRXnHrBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRR
+QAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk3iv/ALBNx/6L
+Nfn5X6B/Gb/kk3iv/sE3H/os1+fletl3wM8PNvjj6BRRRXoHkhRRRQAUUUUAFFFF
+ABRRRQAUUUUAFFFFABRRRQAV+hPwn0pdF+GfhzTQgRotOhMgx/y0ZQz/APjzGvgb
+w1pzav4j0zSVzuvbuK3GPV3C/wBa/R9FVEVEAVVGAB2FebmMtIxPYymGspC0UVie
+PtT/ALG8D67qwba1pp88yn/aVCVH54rzErux7MnZXZ8B+OtRGseNdc1VSCt5qE86
+49GkYj9DWNRU9hbtd31vaqcNNKsYPuSB/WvpNIx8kfINuTue2eGbf7L4e0+ApsZb
+dNw9GIyf1JrQoAAGBwKK/mrF13iK86r+02/vdz10rKwV4f4ruGuvEuozFg2bh1U/
+7KnA/QCva7ydLW0muZOEijaRvoBk14ExLEsSSTySa/RvDnD616z8l+bf6HJi3okJ
+XpnwU+EWr/EW5e7eU6dokD7JrsplpG6lIx3Pqegz36V5xawSXN1FbQrullcIg9ST
+gCv0V8HaDZeGPC+naBp6KtvZQLECBje38TH3Y5J9zX6Li67pRSjux4DCqvNuWyOC
+0r9n/wCF9lZiCbQ57+TGGnuL2Xe3/fDKo/ACvKfjz8BbLw9oVx4n8HPcG0tRvvLG
+V95jj7ujdSB1IOeMnPGK+qay/FzW6+E9Ya7ANsLGczA9Nnltu/TNebTxNSMk73PY
+q4OjKDXKkfnHRRRXunzB0/wm/wCSqeE/+w3Z/wDo9KKPhN/yVTwn/wBhuz/9HpRX
+lZj8UT3Mp+CXqfoTRRRXnHrBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUU
+UAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk3
+iv8A7BNx/wCizX5+V+gfxm/5JN4r/wCwTcf+izX5+V62XfAzw82+OPoFFFFegeSF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHon7N+mf2p8aPD0RXKQTPcsfTy0Z
+wf8AvoL+dfdlfJH7FemfaPiBquqMuVs9OMYPo8jrj9EavrevGx8r1bdj6HLI2o37
+sK8v/ak1P+zfgtq6q22S8eG2T/gUgLD/AL5Vq9Qr56/bc1PyvC3h/Rw3NzeyXJHt
+Em3/ANq1jho81WKOjFz5KEn5HypW54Ct1ufFtgjDKq5k+hVSw/UCsOu0+Eduz65c
+3O0FIrfbn0ZmGP0BrrzzEfV8ur1O0X97Vl+J81SV5pHp9FFFfzqesYvjq5Nr4T1C
+QdWi8v8A77IU/oa8Wr1L4tXHl+H4IA+DNcDI9VAJP67a8tr9q4Cw/ssq5/55N/dZ
+foedinedjsPgppn9r/FnwzZFdy/2hHK49VjPmMPyU1+gFfGn7Humfbfi59sK5Gn6
+fNOD6M22Mfo5r7Lr3Mwleol2R62VxtSb7sK4P9oPU/7K+DXiW4DbWltPsw9/NYRn
+9HNd5Xh37Z2p/ZfhpY6crYe+1JNw9URGY/8Aj2yuahHmqRXmdmJlyUZPyPkCiiiv
+oT5Q6f4Tf8lU8J/9huz/APR6UUfCb/kqnhP/ALDdn/6PSivKzH4onuZT8EvU/Qmi
+iivOPWCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAoooo
+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKAOS+M3/ACSbxX/2Cbj/ANFmvz8r
+9A/jN/ySbxX/ANgm4/8ARZr8/K9bLvgZ4ebfHH0CiiivQPJCiiigAooooAKKKKAC
+iiigAoor6Z/Za+Emn3WmQ+OfE1ol0ZWJ0y1lXKKoOPOZT1JIO0HgAZ5yMZ1qsaUe
+Zm9ChKvPlieI6B8OPHeu2i3mleFdUuLZhlJTCURx6qWwG/CsjxF4e1zw7di013Sb
+3TZmGVW4hKbh6qTwR7iv0crn/iF4S0rxr4Wu9C1WFGSVCYZduWgkx8sinsQfzGQe
+DXnxzB83vLQ9OeVLl92Wp+d9FTXtvLZ3k9pOMSwSNG49GU4P8qhr1Dxj6u/Yk0zy
+fCOv6wVwbq+S3B9REm7+cpr6CrzL9l7TP7N+C2jFl2yXZluX990jBT/3yFr02vAx
+MuarJn1OEhyUIryCvkb9tLU/tPxD0zTFbKWWnBmHo8jsT/46qV9c18IftGan/avx
+n8RzBspDcLbKPTykVCPzU1tgI3q37I5sznajbuzz6vSvhBbhdMvrvPMkyx4/3Vz/
+AOz15rXsPw5t/I8I2hKbWlLyN75Y4P5AV5HHWI9llMo/ztL9f0PHwqvM6KiiivxE
+9E82+MFwG1CwtMcxxNIT/vHH/slcLXSfEq4afxdcoSCsKpGv02gn9Sa5uv6F4ew/
+1fK6FP8Aup/fr+p5VZ3mz6a/Yf0zEfibWXXqYLaM/Tezj9Ur6Wrx79kLTPsPwfiu
+yuDqN9PcZ9QCIv8A2ma9hrLFS5q0j6PBR5aEUFfLP7b2p+Zr/hzRg3+otZblh/10
+cKP/AEUa+pq+JP2rNT/tH40anEG3JYwwWyn6IHI/76dq0wMb1b9jHMpctC3dnlVF
+Fe3/ALM3wltvGVxL4l8RRM+i2kvlw2+SBdSjk5PXYuRn1Jx2Ir16lSNOPNI8KjSl
+VmoROI+Cug65qPxF8N39ho+oXVpbavayTzw2zvHEqzKWLMBgADnmivvOztbaytY7
+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
+p4T/AOw3Z/8Ao9KKPhN/yVTwn/2G7P8A9HpRXlZj8UT3Mp+CXqfoTRRRXnHrBRRR
+QAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRR
+QAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk3iv/ALBNx/6LNfn5X6I/EiyfUfh7
+4jsIxl7jS7mNB/tGJgP1xX53V62XP3ZHh5svfi/IKKKK9A8kKKKKAPp79ivxRYpp
+2reD55kjvGuft1srHHmgoqOB6ldinHoSexr6Sr81rG7urC8ivLK5mtrmFg8UsTlX
+Rh0II5Br0yy/aA+KFtZC2OtwTlRgSy2cbSD8cc/Ug152IwUpz5ovc9fCZhGnTUJr
+Y+xfGPiXRvCWg3Gta5eJbWsI7n5pG7Ig/iY9h/Svgj4i+Kbvxn4z1HxHeL5bXcmY
+4s5EUYAVE/BQOe5ye9QeLfFfiPxZfC98RavdajMuQnmt8qZ6hVGFX8AKxa3w2FVH
+V7nNjMY8RolZIK+0/wBkbTPsHwctrkrg6heT3J98MIx/6Lr4sr9CPhJpn9j/AAx8
+N6eV2vHpsJkHo7KGb/x5jWWYStTS8zbKo3quXZHUUUUV5B7x8QftTan/AGj8adWR
+W3R2UcNsn4RhmH/fTNXl1bnxA1P+2fHWu6qG3Ld6hPKh/wBkuSo/LFYdfR0o8sEj
+5KtLnqSl3Z9k/sd6Z9i+EzXrL82oahLMD6qoWMD80b869nrz39nBrZvgp4b+ykFB
+BIGx2fzX3f8Aj2a9Crwa7vVk/M+mw0eWjFLsgr4q/a11P7f8Zby3Dbl0+0gth/3z
+5h/WQ19nahd22n2M99ezpBbW8bSzSucKiKMkn2Ar88/iDrv/AAk3jfWdfAZUvryS
+WNW6qhPyA+4XArry+F5uRxZrNKmo92YVFFFeseCFFFFABRRRQAUUUUAFFFFABRRR
+QAUUUUAdP8Jf+SqeE/8AsN2f/o5KKvfAqye/+MHhaBBkrqEc34R/vD+i0V5OYv30
+e7lS/dyfmffdFFFeeeqFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUU
+UUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUABAIIIyD1Ffnp8
+UPDj+E/H+s6AyFY7a5byM94m+aM/98la/Quvnv8AbB8AyanpMHjfTIS9xp6eTfqo
+5aDOVf8A4CSc+zZ6LXbgavJUs+p5+ZUXUpcy3R8p0UUV7J86FFFFABRRRQAUUUUA
+XvD9g2q69p+lpndeXUVuuPV3C/1r9II0SONY41CooCqB2Ar84/C2p/2L4n0rWQhk
++wXsN1tH8XluGx+lfoloup2Os6Ta6rplwlzZ3UQlhlQ8Mp/kfUdjXmZje8ex7WU2
+tLvoXKxvHOp/2L4L1vV9202dhPOp/wBpUJH64rZr52/a0+JllDo0vgLRrlJ7y4Zf
+7SeNsiBAQRHkfxEgZHYDB61w0abqTUUejiKqpU3JnyxRRRX0J8oetfAb4x3Pw8Mu
+lalay3+hTyeYY4yPNt3PBZM8EHAypI9QRzn3eb9oz4aJZ+et1qcsmM+Qtk2/6ZJC
+/rXxdRXNUwlOpLmZ20cdVpR5VseufGr43av49gbR9Ot20rQtwLw78y3GDx5hHGO+
+0cZ6k8Y8jooreFONNcsUc1SrOrLmm7sKKKKozCiiigAooooAKKKKACiiigAooooA
+KKKls7a4vLuG0tYXnuJnEcUaDLOxOAAO5JoGe6fsZeG3v/HN/wCJJU/caXbGONiP
++W0uRx9ED5/3hRX0F8FfBUfgPwBZaK2xr183F869GmYDIz3CgBR7LnvRXgYmr7So
+2tj6fB0fY0lF7na0UUVgdQUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFA
+BRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUyeKKeF4Zo
+0kikUq6OMqykYII7in0UAfGX7Qfwdu/BWoS67oUEk/hud88ZZrJifuN/sZ6N+B5w
+T45X6WzwxXEDwTxJLFIpV0dQysp4IIPUV89/FT9m6y1CWXU/A1zFp87Es+nzk+Sx
+/wCmbclPocj3UV6mHxqty1PvPFxeXO/NS+4+VqK6Dxb4K8V+FJjH4g0K9sQDgSvH
+uib6SDKn8DXP16KaaujyZRcXZoKKKKZIUUUUAFdh4C+JfjPwQjQaBrDxWjtua1lQ
+Swk+oVvun3XBNcfRSlFSVmiozlB3i7M9N8SfHX4la3ZtaPra2ELjDixhWJiP9/7w
+/AivM2ZmYsxLMTkknJJpKKUYRhpFWKnUnUd5O4UUUVRmFFFFABRRRQAUUUUAFFFF
+ABRRRQAUUUUAFFFFABRQOTgV33gb4QePPF0kbWWiy2dm/W8vgYYgPUZG5v8AgINT
+KcYK8nYuEJTdoq5waI0jqiKWdjhVAySfQV9Y/s0/BuTw75Xi/wAVW23VnXNlaOOb
+VSPvuP8AnoQen8I9zx1Pwi+CXhvwK0WpXJ/tfXFGRdSphIT/ANMk7H/aOT9M4r1S
+vLxOM51yw2PaweX+zfPU37BRRRXnnqhRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR
+RRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR
+RRQAUUUUAFFFFACOquhR1DKwwQRkEVzWpfD7wLqLmS98IaHLIer/AGGMMfqQM101
+FNSa2ZMoqW6OK/4VN8Nv+hM0j/vzR/wqb4bf9CbpP/fmu1oqvaz7sn2NP+VfccV/
+wqb4bf8AQm6T/wB+aP8AhU3w2/6E3Sf+/NdrRR7Wfdh7Gn/KvuOK/wCFTfDb/oTd
+J/780f8ACpvht/0Juk/9+a7Wij2s+7D2NP8AlX3HFf8ACpvht/0Juk/9+aP+FTfD
+b/oTdJ/7812tFHtZ92Hsaf8AKvuOK/4VN8Nv+hN0n/vzR/wqb4bf9CbpP/fmu1oo
+9rPuw9jT/lX3HFf8Km+G3/Qm6T/35o/4VN8Nv+hN0n/vzXa0Ue1n3Yexp/yr7jiv
++FTfDb/oTdJ/780f8Km+G3/Qm6T/AN+a7Wij2s+7D2NP+VfccV/wqb4bf9CbpP8A
+35o/4VN8Nv8AoTdJ/wC/NdrRR7Wfdh7Gn/KvuOK/4VN8Nv8AoTdJ/wC/NH/Cpvht
+/wBCbpP/AH5rtaKPaz7sPY0/5V9xxX/Cpvht/wBCbpP/AH5o/wCFTfDb/oTdJ/78
+12tFHtZ92Hsaf8q+44r/AIVN8Nv+hN0n/vzR/wAKm+G3/Qm6T/35rtaKPaz7sPY0
+/wCVfccV/wAKm+G3/Qm6T/35pV+FHw3U5HgzSPxgBrtKKPaz7sPY0/5V9xi6N4T8
+LaK4fSPDmkWDjo9vZxo35gZraooqW29y0ktEFFFFIYUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAeWftC/FOT4c6TaQad
+Zpc6tqIfyGlH7qFVxuZgOWPzDA/E9MH5dvfjB8S7u9N3J4w1FHJzthYRoP8AgCgL
++leqftw/8hXwt/1wuf8A0KOvnCvZwdGHslJrVnz+Pr1PbOKeiPqP9nv45azr/iK1
+8JeLES7nusra38UYRtwUttkUYBBAOGAHPUHOR9G18Ifs5/8AJa/DX/Xw/wD6Kevu
++uLG04wqe6j0cuqzqUnzO9mFFFFcZ3hRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR
+RRQAUUUUAFFFFABRRRQAUUUUAVdXvodM0u51CcMYreJpGCjJIAzgV4br/wARfEmp
+XLNbXZ0+3z8kUHBA926k/kPavYPH/wDyJWsf9ej/AMq+bq+F4ux+Io1IUac3FNXd
+tOpx4mck0kzsvD/xG8R6bcqbq6Oo2+fnin649m6g/mPavctKvYdS0y21CAMIriJZ
+EDDBAIzzXy3X0n4D/wCRL0f/AK84/wD0EUcI4/EVpzpVZuSSur69Qw05NtNm1RRR
+X3R2BRRWR4n8R6V4dtBPqU5Uvny4kGXk+g/qeKzq1oUYOdR2S6sTaSuzXorzMfF7
+TvPwdHuhDn7wlXdj6dP1ruPDfiDS/ENmbnTLjzAvEkbDDxn0I/yK4sLm2Dxc+SjU
+Tfb/AIcmNSMnZM1KKKK9EsKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiig
+AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD5e/bh/5Cvhb/rhc
+/wDoUdfOFfR/7cP/ACFfC3/XC5/9Cjr5wr3cH/BifM4//eJf10PQf2c/+S1+Gv8A
+r4f/ANFPX3fXwh+zn/yWvw1/18P/AOinr7vrhzD+IvQ9PKv4T9f8gooorgPTCiii
+gAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAw/H//ACJW
+sf8AXo/8q+bq+kfH/wDyJWsf9ej/AMq+bq/OeNP95p/4f1OHFfEgr6T8B/8AIl6P
+/wBecf8A6CK+bK+k/Af/ACJej/8AXnH/AOginwX/ALzU/wAP6hhfiZtUUUV+incF
+eF/G4k+NiCSQLaPHt1r3SvCvjb/yO7f9e0f9a+X4v/5F/wD28v1OfE/AcPXf/Akk
+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
+</content>
+            </pdf-report-header>
+          </custom-logo>
+          <config>
+            <rematch>yes</rematch>
+          </config>
+          <management>
+            <idle-timeout>0</idle-timeout>
+            <quota-settings/>
+            <common-criteria-alarm-generation>
+              <enable-alarm-generation>yes</enable-alarm-generation>
+              <enable-web-alarm-notification>yes</enable-web-alarm-notification>
+            </common-criteria-alarm-generation>
+          </management>
+          <http2>
+            <connection-logging>yes</connection-logging>
+          </http2>
+        </setting>
+      </deviceconfig>
+      <vsys>
+        <entry name="vsys1">
+          <application/>
+          <application-group/>
+          <zone>
+            <entry name="Public">
+              <network>
+                <layer3>
+                  <member>ethernet1/1</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+            <entry name="Internal">
+              <network>
+                <layer3>
+                  <member>ethernet1/2</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+            <entry name="External">
+              <network>
+                <layer3>
+                  <member>ethernet1/3</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+            <entry name="User">
+              <network>
+                <layer3>
+                  <member>ethernet1/4</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+          </zone>
+          <service>
+            <entry name="dns">
+              <protocol>
+                <udp>
+                  <port>53</port>
+                  <override>
+                    <no/>
+                  </override>
+                </udp>
+              </protocol>
+            </entry>
+            <entry name="ldap">
+              <protocol>
+                <tcp>
+                  <port>389</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="ldaps">
+              <protocol>
+                <tcp>
+                  <port>636</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="ntp">
+              <protocol>
+                <udp>
+                  <port>123</port>
+                  <override>
+                    <no/>
+                  </override>
+                </udp>
+              </protocol>
+            </entry>
+            <entry name="pop3">
+              <protocol>
+                <tcp>
+                  <port>110</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="syslog">
+              <protocol>
+                <udp>
+                  <port>514</port>
+                  <override>
+                    <no/>
+                  </override>
+                </udp>
+              </protocol>
+            </entry>
+            <entry name="smtp">
+              <protocol>
+                <tcp>
+                  <port>25</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="splunk-webui">
+              <protocol>
+                <tcp>
+                  <port>8000</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="Wazuh-Connection">
+              <protocol>
+                <tcp>
+                  <port>1514</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+              <description>Wazuh Agent Connection Service</description>
+            </entry>
+            <entry name="Wazuh-Enroll">
+              <protocol>
+                <tcp>
+                  <port>1515</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+              <description>Wazuh agent enrollment service</description>
+            </entry>
+            <entry name="Wazuh-Cluster">
+              <protocol>
+                <tcp>
+                  <port>1516</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+              <description>Wazuh cluster daemon</description>
+            </entry>
+          </service>
+          <service-group>
+            <entry name="Wazuh-Services">
+              <members>
+                <member>Wazuh-Cluster</member>
+                <member>Wazuh-Connection</member>
+                <member>Wazuh-Enroll</member>
+              </members>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+            </entry>
+          </service-group>
+          <schedule/>
+          <rulebase>
+            <security>
+              <rules>
+                <entry name="TestRule" uuid="931470b3-d9c5-4e8d-be4a-435eba500033">
+                  <to>
+                    <member>any</member>
+                  </to>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <action>allow</action>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Wkst-Internet" uuid="eaae7edc-6e36-4e78-a4d9-1513051c06a5">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>apt-get</member>
+                    <member>web-browsing</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="PA-Internet" uuid="5142caf6-fd1f-40fe-aa1d-16aaf65bf6e7">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>github</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Debian-Internet" uuid="9d2db260-22bb-4829-8903-42a644aebbfe">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>apt-get</member>
+                    <member>github</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Docker-Internet" uuid="3bc29d75-c830-4be0-b1e1-39124e4199d3">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>github</member>
+                    <member>ms-update</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="AD-Internet" uuid="c6bf37bb-354c-46b8-aae7-3853023962b1">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>github</member>
+                    <member>ms-update</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-http</member>
+                    <member>service-https</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="WebSrv-Internet" uuid="61c5d84a-e668-45ca-b808-aa7a8c11795c">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Ecomm-Internet" uuid="405b1ced-3846-4b53-bc9b-c0e3e6256bf5">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Splunk-Internet" uuid="390a789f-ee13-4806-8900-e34186fe2a58">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Mail-Internet" uuid="85ab954c-9591-4fa3-96d3-eab6b9a15dda">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Bind9-Scoring" uuid="04fd0bea-492a-42cd-89ce-8ee6f85d9f58">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>scoring</group-tag>
+                </entry>
+                <entry name="AD-DNS-Scoring" uuid="db4cf888-3221-4a22-8ac5-e72e4921de5e">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Splunk-Scoring" uuid="fbee9fef-b685-4e7b-be9d-e5c3e5b328a5">
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>splunk-webui</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <group-tag>scoring</group-tag>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Ecomm-Scoring" uuid="6e6bc8a1-a562-498f-9ced-2b10d898da05">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Ecomm-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <rule-type>universal</rule-type>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Mail-Scoring" uuid="2cf30ba4-8b49-46e9-b8c6-93ddd929a4de">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Mail-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>pop3</member>
+                    <member>smtp</member>
+                  </application>
+                  <service>
+                    <member>pop3</member>
+                    <member>smtp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Scored-Ping" uuid="9c1c728f-ccb3-45d3-9523-508f08d14680">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>Public</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>ScoredPublicIPs</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>icmp</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Wkst2PA" uuid="3d0d8dfc-c0c6-47a3-9eb4-cf0a291c2cfd">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>PA-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>access-control</member>
+                    <member>wkst</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>access-control</group-tag>
+                </entry>
+                <entry name="Splunk-WebUI" uuid="ddfca3f8-7f5e-426d-a964-6bdb9742a225">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>splunk-webui</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>access-control</member>
+                    <member>splunk</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Wazuh-UI" uuid="3f3beb48-5ba9-4d17-8bee-e692a570b04c">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>splunk</member>
+                    <member>docker</member>
+                    <member>access-control</member>
+                    <member>wazuh</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="LDAP" uuid="ca2c32da-fc34-493d-a172-e496842ae497">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ldap</member>
+                  </application>
+                  <service>
+                    <member>ldap</member>
+                    <member>ldaps</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>access-control</member>
+                    <member>mail</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="PA-Updates-Security" uuid="7792c1de-7a99-4957-b71e-9e763b07d6e3">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>paloalto-dns-security</member>
+                    <member>paloalto-updates</member>
+                    <member>paloalto-wildfire-cloud</member>
+                    <member>pan-db-cloud</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>functionality</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>no</log-start>
+                  <group-tag>functionality</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="AD-ExtDNS" uuid="c4ab3105-17de-4d66-b805-df2f54169d42">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>ApprovedDNS</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>dns</group-tag>
+                </entry>
+                <entry name="Debian-DNS" uuid="163428c0-c9a4-444c-857e-a4902929f607">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Docker-DNS" uuid="7eb487ed-23ea-40b6-9e43-2a4b048525a3">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>docker</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="WebSrv-DNS" uuid="3443c9cf-1586-4545-b420-746be082d262">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Wkst-DNS" uuid="8791fa2b-4b38-4cb5-8dbf-137b98572b1e">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Splunk-DNS" uuid="f15f6aff-4c34-4bec-bce6-fa825e264b46">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Ecomm-DNS" uuid="6c9bb5e8-a9fe-497e-b181-11027b6d53d2">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Mail-DNS" uuid="52f257c7-a0f5-44c7-8cc0-462788bfe85f">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="PA-DNS" uuid="ffacbc11-9e86-40d9-afa0-c360ee18bc39">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Debian-Logging" uuid="0f381779-abfa-4835-a43e-db71d3481db9">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Docker-Logging" uuid="903d6b33-179a-4ea7-a3a9-5fa4aa2b5c87">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>wazuh-agent</member>
+                    <member>syslog</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="WebSrv-Logging" uuid="27290cbf-4ba9-429a-9dbe-7116dcc3742f">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="AD-Logging" uuid="d90d163c-35a0-43cb-a9f3-9455598150c1">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>wazuh-agent</member>
+                    <member>syslog</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Wkst-Logging" uuid="5b819b14-6833-4cfd-8570-bc9136214bc9">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Ecomm-Logging" uuid="fe6634db-0791-4f43-a22b-3284f782ed0c">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>wazuh-agent</member>
+                    <member>syslog</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Mail-Logging" uuid="d1c15f2c-d602-4f06-b869-1e6edb03c7bc">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="PA-Logging" uuid="e788bd5b-96d3-4b1a-b279-fe7adec6d4b1">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>syslog</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Docker-NTP" uuid="b6d1f60f-bbe5-4f21-a5f6-9fba7c530089">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="DebianNTP2Ext" uuid="5ba88cb2-72b3-4f41-b506-9a05eb398770">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>GoogleNTP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>ntp</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="WebSrv-NTP" uuid="b6d307e4-8d14-472d-9316-6639aa6b5259">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="AD-NTP" uuid="62839907-7c21-47bc-bc79-1a04f5570c5e">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Wkst-NTP" uuid="8885d257-0045-4ce9-8eb1-c536070a3634">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Splunk-NTP" uuid="116123cd-e2db-4587-b1ba-8011d74aec76">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Ecomm-NTP" uuid="7f281022-6dd8-4e75-bd3d-7ee5b56bf456">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="PA-NTP" uuid="0fdf4ff3-79f0-48e9-a093-82df39de6c6b">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Mail-NTP" uuid="150fc68b-ec08-44a3-a648-77a434430eca">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="DenyInternal2User" uuid="99a5e5cd-a6af-47ea-bff3-aca31f548b05">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>user</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyUser2Internal" uuid="c58f6c0c-bf5e-403b-a64b-39b7cb8df7ef">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>user</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyInternal2Public" uuid="0b70f74a-d005-45f4-a9a2-e733885ba8bb">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyPublic2Internal" uuid="884bc855-ee9f-467c-9987-3b102866511f">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyUser2Public" uuid="82f4946c-3b2a-416b-b109-d315dc15631a">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>user</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyPublic2User" uuid="5cbe069f-53c9-4dad-a582-5265a8a34aa6">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>user</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyExternal2Docker" uuid="4b5217e9-572e-4456-ac5b-ad322af0aa1a">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Docker-IP</member>
+                    <member>Docker-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Debian" uuid="723026e3-c956-4e9b-947d-67c1f7fbbbe8">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>Debian-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2WebSrv" uuid="50441d4a-d937-46cc-bc9f-0006a85bb120">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>WebSrv-IP</member>
+                    <member>WebSrv-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2AD" uuid="b24ec442-91aa-4dad-9f02-37ff921bd5b6">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                    <member>AD-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Wkst" uuid="da3d5ff9-fdcb-4c10-a25b-cea61b89a9c9">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Wkst-IP</member>
+                    <member>Wkst-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2PA" uuid="d6c913f1-d6c7-484a-9070-58b2de312722">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>PA-IP</member>
+                    <member>PA-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Splunk" uuid="ec3e24e3-cf71-4286-9c9b-916f4fee6d70">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                    <member>Splunk-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Ecomm" uuid="74108cae-e5c8-4011-8858-d280f82912fc">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Ecomm-IP</member>
+                    <member>Ecomm-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Mail" uuid="96b62905-22ab-42fe-a9f2-d186f082d686">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Mail-IP</member>
+                    <member>Mail-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="any2any" uuid="c7de3172-4fd1-4785-8c95-3825b56552e4">
+                  <option>
+                    <disable-server-response-inspection>no</disable-server-response-inspection>
+                  </option>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <to>
+                    <member>any</member>
+                  </to>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <action>allow</action>
+                  <log-start>no</log-start>
+                  <log-end>yes</log-end>
+                  <negate-source>no</negate-source>
+                  <negate-destination>no</negate-destination>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                  </tag>
+                  <group-tag>zone-control</group-tag>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="DenyAny2Any" uuid="df68170a-a303-4dc2-be03-2209d9bc65d6">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>any</member>
+                  </to>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+              </rules>
+            </security>
+            <nat>
+              <rules>
+                <entry name="PA-OUT" uuid="a617c02a-5ede-4b93-85fb-1b3bbf8aa66c">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>172.25.244.150</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>PA</member>
+                  </tag>
+                </entry>
+                <entry name="Wkst" uuid="29685180-0ea2-4437-ae01-d3ded14055ad">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Wkst-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <to-interface>ethernet1/3</to-interface>
+                </entry>
+                <entry name="Ecomm" uuid="ad9b4759-e01e-408c-8e87-3023c10141c3">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Ecomm-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <disabled>no</disabled>
+                  <tag>
+                    <member>ecomm</member>
+                  </tag>
+                </entry>
+                <entry name="WebSrv" uuid="a2af06af-9b38-4f12-a1cb-597b4e23686e">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>WebSrv-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <disabled>no</disabled>
+                  <tag>
+                    <member>websrv</member>
+                  </tag>
+                </entry>
+                <entry name="Splunk" uuid="c3fbcbc3-9816-4bc5-8870-7a5cc35a3b7d">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Splunk-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                </entry>
+                <entry name="Mail" uuid="27773a46-80d7-460e-8327-238ae24213e1">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Mail-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>mail</member>
+                  </tag>
+                </entry>
+                <entry name="AD" uuid="25c71eda-f958-4655-955f-b6ab7cf0e9ab">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>AD-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>ad</member>
+                  </tag>
+                </entry>
+                <entry name="Docker" uuid="e5f063d7-399d-4dca-b00f-4e9e3c6fbe93">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Docker-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>docker</member>
+                  </tag>
+                </entry>
+                <entry name="Debian" uuid="869fb469-951b-48b6-97c8-eb7d5e6f637b">
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <source-translation>
+                    <static-ip>
+                      <bi-directional>yes</bi-directional>
+                      <translated-address>Debian-IP-Pub</translated-address>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>debian</member>
+                  </tag>
+                </entry>
+                <entry name="User NAT" uuid="ca34f011-edcb-4b0f-8684-1ea2dfdb8a71">
+                  <source-translation>
+                    <dynamic-ip-and-port>
+                      <translated-address>
+                        <member>172.25.244.152</member>
+                      </translated-address>
+                    </dynamic-ip-and-port>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>User-Mask</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>any</to-interface>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Public NAT" uuid="6c57b0fc-c198-4a86-a7bf-e34ca59433e3">
+                  <source-translation>
+                    <dynamic-ip-and-port>
+                      <translated-address>
+                        <member>172.25.244.151</member>
+                      </translated-address>
+                    </dynamic-ip-and-port>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Public-Mask</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>any</to-interface>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Internal NAT" uuid="9b6d7361-ca9f-40b4-895e-806cedf18f31">
+                  <source-translation>
+                    <dynamic-ip-and-port>
+                      <translated-address>
+                        <member>172.25.244.150</member>
+                      </translated-address>
+                    </dynamic-ip-and-port>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Internal-Mask</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>any</to-interface>
+                  <disabled>yes</disabled>
+                </entry>
+              </rules>
+            </nat>
+            <application-override>
+              <rules/>
+            </application-override>
+          </rulebase>
+          <global-protect>
+            <global-protect-gateway/>
+            <global-protect-portal/>
+            <global-protect-mdm/>
+          </global-protect>
+          <import>
+            <network>
+              <interface>
+                <member>ethernet1/1</member>
+                <member>ethernet1/2</member>
+                <member>ethernet1/3</member>
+                <member>ethernet1/4</member>
+              </interface>
+            </network>
+          </import>
+          <address>
+            <entry name="User-Mask">
+              <ip-netmask>172.20.242.0/24</ip-netmask>
+              <tag>
+                <member>user</member>
+              </tag>
+            </entry>
+            <entry name="Public-Mask">
+              <ip-netmask>172.20.241.0/24</ip-netmask>
+              <tag>
+                <member>public</member>
+              </tag>
+            </entry>
+            <entry name="Internal-Mask">
+              <ip-netmask>172.20.240.0/24</ip-netmask>
+              <tag>
+                <member>internal</member>
+              </tag>
+            </entry>
+            <entry name="AD-IP">
+              <ip-netmask>172.20.242.200</ip-netmask>
+              <tag>
+                <member>ad</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="AD-IP-Pub">
+              <ip-netmask>172.25.244.27</ip-netmask>
+              <tag>
+                <member>ad</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Debian-IP">
+              <ip-netmask>172.20.240.20</ip-netmask>
+              <tag>
+                <member>private-ip</member>
+                <member>debian</member>
+              </tag>
+            </entry>
+            <entry name="Debian-IP-Pub">
+              <ip-netmask>172.25.244.20</ip-netmask>
+              <tag>
+                <member>debian</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Docker-IP">
+              <ip-netmask>172.20.240.10</ip-netmask>
+              <tag>
+                <member>docker</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Docker-IP-Pub">
+              <ip-netmask>172.25.244.97</ip-netmask>
+              <tag>
+                <member>docker</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Ecomm-IP">
+              <ip-netmask>172.20.241.30</ip-netmask>
+              <tag>
+                <member>ecomm</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Ecomm-IP-Pub">
+              <ip-netmask>172.25.244.11</ip-netmask>
+              <tag>
+                <member>ecomm</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Mail-IP">
+              <ip-netmask>172.20.241.40</ip-netmask>
+              <tag>
+                <member>mail</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Mail-IP-Pub">
+              <ip-netmask>172.25.244.39</ip-netmask>
+              <tag>
+                <member>mail</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="PA-IP">
+              <ip-netmask>172.20.242.150</ip-netmask>
+              <tag>
+                <member>PA</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="PA-IP-Pub">
+              <ip-netmask>172.25.244.150</ip-netmask>
+              <tag>
+                <member>PA</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Splunk-IP">
+              <ip-netmask>172.20.241.20</ip-netmask>
+              <tag>
+                <member>splunk</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Splunk-IP-Pub">
+              <ip-netmask>172.25.244.9</ip-netmask>
+              <tag>
+                <member>splunk</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="WebSrv-IP">
+              <ip-netmask>172.20.242.10</ip-netmask>
+              <tag>
+                <member>private-ip</member>
+                <member>websrv</member>
+              </tag>
+            </entry>
+            <entry name="WebSrv-IP-Pub">
+              <ip-netmask>172.25.244.23</ip-netmask>
+              <tag>
+                <member>public-ip</member>
+                <member>websrv</member>
+              </tag>
+            </entry>
+            <entry name="Wkst-IP">
+              <ip-netmask>172.20.242.30</ip-netmask>
+              <tag>
+                <member>wkst</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Wkst-IP-Pub">
+              <ip-netmask>172.25.244.30</ip-netmask>
+              <tag>
+                <member>wkst</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="GoogleDNS">
+              <ip-netmask>8.8.8.8</ip-netmask>
+            </entry>
+            <entry name="GoogleDNS2">
+              <ip-netmask>8.8.4.4</ip-netmask>
+            </entry>
+            <entry name="CloudflareDNS">
+              <ip-netmask>1.1.1.1</ip-netmask>
+            </entry>
+            <entry name="GoogleNTP">
+              <ip-netmask>216.239.35.4</ip-netmask>
+            </entry>
+          </address>
+          <profiles>
+            <hip-objects/>
+            <data-objects/>
+            <hip-profiles/>
+            <custom-url-category/>
+            <virus>
+              <entry name="strict">
+                <decoder>
+                  <entry name="ftp">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="http">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="http2">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="imap">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="pop3">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="smb">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="smtp">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                </decoder>
+                <packet-capture>yes</packet-capture>
+                <mlav-engine-filebased-enabled>
+                  <entry name="Windows Executables">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="PowerShell Script 1">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="PowerShell Script 2">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="Executable Linked Format">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="MSOffice">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="Shell">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                </mlav-engine-filebased-enabled>
+              </entry>
+            </virus>
+            <spyware>
+              <entry name="stricter">
+                <rules>
+                  <entry name="simple-critical">
+                    <action>
+                      <block-ip>
+                        <track-by>source</track-by>
+                        <duration>3600</duration>
+                      </block-ip>
+                    </action>
+                    <severity>
+                      <member>critical</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-high">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <severity>
+                      <member>high</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-medium">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <severity>
+                      <member>medium</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-low">
+                    <action>
+                      <default/>
+                    </action>
+                    <severity>
+                      <member>low</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-informational">
+                    <action>
+                      <default/>
+                    </action>
+                    <severity>
+                      <member>informational</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                </rules>
+                <botnet-domains>
+                  <lists>
+                    <entry name="default-paloalto-dns">
+                      <action>
+                        <sinkhole/>
+                      </action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                  </lists>
+                  <dns-security-categories>
+                    <entry name="pan-dns-sec-adtracking">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-cc">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-ddns">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-grayware">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-malware">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-parked">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-phishing">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-proxy">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-recent">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                  </dns-security-categories>
+                  <sinkhole>
+                    <ipv4-address>pan-sinkhole-default-ip</ipv4-address>
+                    <ipv6-address>::1</ipv6-address>
+                  </sinkhole>
+                  <rtype-action>
+                    <svcb>allow</svcb>
+                  </rtype-action>
+                </botnet-domains>
+                <cloud-inline-analysis>yes</cloud-inline-analysis>
+                <mica-engine-spyware-enabled>
+                  <entry name="HTTP Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="HTTP2 Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="SSL Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="Unknown-TCP Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="Unknown-UDP Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                </mica-engine-spyware-enabled>
+              </entry>
+            </spyware>
+            <vulnerability>
+              <entry name="stricter">
+                <rules>
+                  <entry name="simple-client-critical">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>critical</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-client-high">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>high</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-client-medium">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>medium</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-client-informational">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>informational</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-client-low">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>low</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-server-critical">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>critical</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-server-high">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>high</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-server-medium">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>medium</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-server-informational">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>informational</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-server-low">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>low</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                </rules>
+                <cloud-inline-analysis>yes</cloud-inline-analysis>
+                <mica-engine-vulnerability-enabled>
+                  <entry name="SQL Injection">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="Command Injection">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                </mica-engine-vulnerability-enabled>
+              </entry>
+            </vulnerability>
+            <url-filtering>
+              <entry name="strict">
+                <local-inline-cat>yes</local-inline-cat>
+                <credential-enforcement>
+                  <mode>
+                    <disabled/>
+                  </mode>
+                  <log-severity>medium</log-severity>
+                  <alert>
+                    <member>low-risk</member>
+                    <member>medium-risk</member>
+                    <member>shareware-and-freeware</member>
+                  </alert>
+                  <block>
+                    <member>abused-drugs</member>
+                    <member>adult</member>
+                    <member>command-and-control</member>
+                    <member>compromised-website</member>
+                    <member>gambling</member>
+                    <member>grayware</member>
+                    <member>hacking</member>
+                    <member>high-risk</member>
+                    <member>malware</member>
+                    <member>newly-registered-domain</member>
+                    <member>peer-to-peer</member>
+                    <member>phishing</member>
+                    <member>proxy-avoidance-and-anonymizers</member>
+                    <member>questionable</member>
+                    <member>ransomware</member>
+                    <member>remote-access</member>
+                    <member>scanning-activity</member>
+                    <member>unknown</member>
+                    <member>weapons</member>
+                  </block>
+                </credential-enforcement>
+                <safe-search-enforcement>no</safe-search-enforcement>
+                <log-http-hdr-xff>yes</log-http-hdr-xff>
+                <log-http-hdr-user-agent>yes</log-http-hdr-user-agent>
+                <log-http-hdr-referer>yes</log-http-hdr-referer>
+                <cloud-inline-cat>yes</cloud-inline-cat>
+                <alert>
+                  <member>AI-code-assistant</member>
+                  <member>AI-conversational-assistant</member>
+                  <member>AI-data-and-workflow-optimizer</member>
+                  <member>AI-media-service</member>
+                  <member>AI-meeting-assistant</member>
+                  <member>AI-platform-service</member>
+                  <member>AI-website-generator</member>
+                  <member>AI-writing-assistant</member>
+                  <member>artificial-intelligence</member>
+                  <member>cryptocurrency</member>
+                  <member>low-risk</member>
+                  <member>medium-risk</member>
+                  <member>real-time-detection</member>
+                  <member>shareware-and-freeware</member>
+                </alert>
+                <block>
+                  <member>abused-drugs</member>
+                  <member>adult</member>
+                  <member>command-and-control</member>
+                  <member>compromised-website</member>
+                  <member>gambling</member>
+                  <member>grayware</member>
+                  <member>hacking</member>
+                  <member>high-risk</member>
+                  <member>malware</member>
+                  <member>newly-registered-domain</member>
+                  <member>peer-to-peer</member>
+                  <member>phishing</member>
+                  <member>proxy-avoidance-and-anonymizers</member>
+                  <member>questionable</member>
+                  <member>ransomware</member>
+                  <member>remote-access</member>
+                  <member>scanning-activity</member>
+                  <member>unknown</member>
+                  <member>weapons</member>
+                </block>
+              </entry>
+            </url-filtering>
+            <file-blocking>
+              <entry name="stricter file blocking">
+                <rules>
+                  <entry name="Block all risky file types">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>7z</member>
+                      <member>bat</member>
+                      <member>cab</member>
+                      <member>chm</member>
+                      <member>class</member>
+                      <member>cpl</member>
+                      <member>dll</member>
+                      <member>exe</member>
+                      <member>flash</member>
+                      <member>hlp</member>
+                      <member>hta</member>
+                      <member>jar</member>
+                      <member>msi</member>
+                      <member>Multi-Level-Encoding</member>
+                      <member>ocx</member>
+                      <member>PE</member>
+                      <member>pif</member>
+                      <member>rar</member>
+                      <member>scr</member>
+                      <member>tar</member>
+                      <member>torrent</member>
+                      <member>vbe</member>
+                      <member>wsf</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <action>block</action>
+                  </entry>
+                  <entry name="Block encrypted files">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>encrypted-rar</member>
+                      <member>encrypted-zip</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <action>block</action>
+                  </entry>
+                  <entry name="Log all other file types">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>any</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <action>alert</action>
+                  </entry>
+                </rules>
+              </entry>
+            </file-blocking>
+            <wildfire-analysis>
+              <entry name="strict">
+                <rules>
+                  <entry name="default">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>any</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <analysis>public-cloud</analysis>
+                  </entry>
+                </rules>
+              </entry>
+            </wildfire-analysis>
+            <dos-protection>
+              <entry name="strict">
+                <flood>
+                  <tcp-syn>
+                    <red>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                      <maximal-rate>40000</maximal-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </tcp-syn>
+                  <udp>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </udp>
+                  <icmp>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </icmp>
+                  <icmpv6>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </icmpv6>
+                  <other-ip>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </other-ip>
+                </flood>
+                <resource>
+                  <sessions>
+                    <enabled>no</enabled>
+                  </sessions>
+                </resource>
+                <type>aggregate</type>
+              </entry>
+            </dos-protection>
+          </profiles>
+          <application-filter/>
+          <threats>
+            <vulnerability/>
+          </threats>
+          <user-id-collector>
+            <setting/>
+          </user-id-collector>
+          <tag>
+            <entry name="internal"/>
+            <entry name="public"/>
+            <entry name="user"/>
+            <entry name="ad"/>
+            <entry name="public-ip"/>
+            <entry name="private-ip"/>
+            <entry name="debian"/>
+            <entry name="docker"/>
+            <entry name="ecomm"/>
+            <entry name="mail"/>
+            <entry name="PA"/>
+            <entry name="splunk"/>
+            <entry name="websrv"/>
+            <entry name="wkst"/>
+            <entry name="internet"/>
+            <entry name="scoring"/>
+            <entry name="access-control"/>
+            <entry name="dns"/>
+            <entry name="logging"/>
+            <entry name="ntp"/>
+            <entry name="zone-control"/>
+            <entry name="functionality"/>
+            <entry name="externalsecurity"/>
+            <entry name="wazuh"/>
+          </tag>
+          <address-group>
+            <entry name="User-IP-Group">
+              <static>
+                <member>AD-IP</member>
+                <member>PA-IP</member>
+                <member>WebSrv-IP</member>
+                <member>Wkst-IP</member>
+              </static>
+              <tag>
+                <member>user</member>
+              </tag>
+            </entry>
+            <entry name="Public-IP-Group">
+              <static>
+                <member>Ecomm-IP</member>
+                <member>Mail-IP</member>
+                <member>Splunk-IP</member>
+              </static>
+              <tag>
+                <member>public</member>
+              </tag>
+            </entry>
+            <entry name="Internal-IP-Group">
+              <static>
+                <member>Debian-IP</member>
+                <member>Docker-IP</member>
+              </static>
+              <tag>
+                <member>internal</member>
+              </tag>
+            </entry>
+            <entry name="ApprovedDNS">
+              <static>
+                <member>CloudflareDNS</member>
+                <member>GoogleDNS</member>
+                <member>GoogleDNS2</member>
+              </static>
+            </entry>
+            <entry name="ScoredPublicIPs">
+              <static>
+                <member>AD-IP-Pub</member>
+                <member>Debian-IP-Pub</member>
+                <member>Ecomm-IP-Pub</member>
+                <member>Mail-IP-Pub</member>
+                <member>Splunk-IP-Pub</member>
+              </static>
+              <tag>
+                <member>scoring</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+          </address-group>
+          <log-settings>
+            <profiles>
+              <entry name="Wazuh">
+                <match-list>
+                  <entry name="Wazuh-Traffic">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>traffic</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Threat">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>threat</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Auth">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>auth</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-URL">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>url</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Data">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>data</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Decrypt">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>decryption</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Tunnel">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>tunnel</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                </match-list>
+              </entry>
+            </profiles>
+          </log-settings>
+          <profile-group>
+            <entry name="strict">
+              <virus>
+                <member>strict</member>
+              </virus>
+              <spyware>
+                <member>stricter</member>
+              </spyware>
+              <vulnerability>
+                <member>stricter</member>
+              </vulnerability>
+              <url-filtering>
+                <member>strict</member>
+              </url-filtering>
+              <file-blocking>
+                <member>stricter file blocking</member>
+              </file-blocking>
+              <wildfire-analysis>
+                <member>strict</member>
+              </wildfire-analysis>
+            </entry>
+          </profile-group>
+        </entry>
+      </vsys>
+    </entry>
+  </devices>
+</config>
+                                                                                                                                 ./replace_num.bat                                                                                   0000644 0001750 0001750 00000001017 14746231145 013565  0                                                                                                    ustar 00collin                          collin                                                                                                                                                                                                                 @echo off
+setlocal enabledelayedexpansion
+
+if "%~3"=="" (
+    echo Usage: %0 ^<filename^> ^<query_number^> ^<team_number^>
+    exit /b 1
+)
+
+set "filename=%~1"
+set "query_num=%~2"
+set "team_num=%~3"
+
+REM Calculate the new value
+set /a new_value=20+%team_num%
+
+REM Run PowerShell to replace the value the number with the new value
+powershell -Command "(Get-Content '%filename%') -replace '\b%query_num%\b', '%new_value%' | Set-Content '%filename%'"
+
+echo Successfully replaced all occurrences of '%query_num%' with '%new_value%'
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 ./replace_num.sh                                                                                    0000644 0001750 0001750 00000000604 14746231145 013432  0                                                                                                    ustar 00collin                          collin                                                                                                                                                                                                                 #!/bin/bash
+
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <filename> <replace_number> <team_number>"
+    exit 1
+fi
+
+filename="$1"
+replace_num="$2"
+team_num="$3"
+
+new_value=$((20 + team_num))
+
+# Use sed to replace the number while preserving the file
+sed -i "s/\b${replace_num}\b/${new_value}/g" "$filename"
+
+echo "Successfully replaced all occurrences of '$replace_num' with '$new_value'"
+                                                                                                                            ./the-finale.xml                                                                                    0000644 0001750 0000355 00000757413 14751244133 014106  0                                                                                                    ustar 00collin                          syncthing                                                                                                                                                                                                              <?xml version="1.0"?>
+<config urldb="paloaltonetworks" version="11.0.0" detail-version="11.0.0">
+  <mgt-config>
+    <users>
+      <entry name="admin">
+        <phash>$1$utimyspd$wlmtxZ7QkOWgUUw/XzgG.1</phash>
+        <permissions>
+          <role-based>
+            <superuser>yes</superuser>
+          </role-based>
+        </permissions>
+        <preferences>
+          <saved-log-query>
+            <traffic>
+              <entry name="From-Docker">
+                <query>( addr.src in 172.20.240.10 )</query>
+              </entry>
+              <entry name="From-Debian">
+                <query>( addr.src in 172.20.240.20 )</query>
+              </entry>
+              <entry name="From-WebSrv">
+                <query>( addr.src in 172.20.242.10 )</query>
+              </entry>
+              <entry name="From-AD">
+                <query>( addr.src in 172.20.242.200 )</query>
+              </entry>
+              <entry name="From-Wkst">
+                <query>( addr.src in 172.20.242.30 )</query>
+              </entry>
+              <entry name="From-Splunk">
+                <query>( addr.src in 172.20.241.20 )</query>
+              </entry>
+              <entry name="From-Ecomm">
+                <query>( addr.src in 172.20.241.30 )</query>
+              </entry>
+              <entry name="From-Mail">
+                <query>( addr.src in 172.20.241.40 )</query>
+              </entry>
+            </traffic>
+          </saved-log-query>
+        </preferences>
+      </entry>
+    </users>
+  </mgt-config>
+  <shared>
+    <ssl-decrypt>
+      <ssl-exclude-cert/>
+      <trusted-root-CA/>
+    </ssl-decrypt>
+    <application/>
+    <application-group/>
+    <service/>
+    <service-group/>
+    <botnet>
+      <configuration>
+        <http>
+          <dynamic-dns>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </dynamic-dns>
+          <malware-sites>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </malware-sites>
+          <recent-domains>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </recent-domains>
+          <ip-domains>
+            <enabled>yes</enabled>
+            <threshold>10</threshold>
+          </ip-domains>
+          <executables-from-unknown-sites>
+            <enabled>yes</enabled>
+            <threshold>5</threshold>
+          </executables-from-unknown-sites>
+        </http>
+        <other-applications>
+          <irc>yes</irc>
+        </other-applications>
+        <unknown-applications>
+          <unknown-tcp>
+            <destinations-per-hour>10</destinations-per-hour>
+            <sessions-per-hour>10</sessions-per-hour>
+            <session-length>
+              <maximum-bytes>100</maximum-bytes>
+              <minimum-bytes>50</minimum-bytes>
+            </session-length>
+          </unknown-tcp>
+          <unknown-udp>
+            <destinations-per-hour>10</destinations-per-hour>
+            <sessions-per-hour>10</sessions-per-hour>
+            <session-length>
+              <maximum-bytes>100</maximum-bytes>
+              <minimum-bytes>50</minimum-bytes>
+            </session-length>
+          </unknown-udp>
+        </unknown-applications>
+      </configuration>
+      <report>
+        <topn>100</topn>
+        <scheduled>yes</scheduled>
+      </report>
+    </botnet>
+    <profiles>
+      <decryption/>
+      <custom-url-category/>
+    </profiles>
+    <admin-role/>
+    <ssl-tls-service-profile/>
+    <content-preview>
+      <application/>
+      <application-type>
+        <category>
+          <entry name="saas" id="6">
+            <subcategory>
+              <entry name="vertical-industry" id="32"/>
+              <entry name="marketing" id="33"/>
+              <entry name="hr" id="34"/>
+              <entry name="erp" id="35"/>
+              <entry name="it-infrastructure" id="36"/>
+              <entry name="sales" id="37"/>
+              <entry name="development" id="38"/>
+              <entry name="commerce" id="39"/>
+              <entry name="security" id="40"/>
+              <entry name="customer-service" id="41"/>
+              <entry name="it-management" id="42"/>
+              <entry name="content-management" id="43"/>
+              <entry name="collaboration-productivity" id="44"/>
+              <entry name="office" id="45"/>
+              <entry name="analytics" id="46"/>
+              <entry name="digital-advertising" id="47"/>
+              <entry name="design" id="48"/>
+              <entry name="supply-chain-logistics" id="49"/>
+              <entry name="hosting" id="50"/>
+              <entry name="artificial-intelligence" id="51"/>
+              <entry name="cad-plm" id="52"/>
+              <entry name="governance-risk-compliance" id="53"/>
+              <entry name="iot-management" id="54"/>
+              <entry name="b2b-marketplace-platforms" id="55"/>
+              <entry name="ar-vr" id="56"/>
+              <entry name="data-privacy" id="57"/>
+              <entry name="email" id="58"/>
+              <entry name="erp-crm" id="59"/>
+              <entry name="file-sharing" id="60"/>
+              <entry name="management" id="61"/>
+              <entry name="storage-backup" id="62"/>
+              <entry name="internet-conferencing" id="63"/>
+              <entry name="remote-access" id="64"/>
+              <entry name="general-business" id="65"/>
+              <entry name="internet-utility" id="66"/>
+              <entry name="office-programs" id="67"/>
+              <entry name="voip-video" id="68"/>
+              <entry name="software-development" id="69"/>
+              <entry name="social-business" id="70"/>
+              <entry name="web-posting" id="71"/>
+              <entry name="social-networking" id="72"/>
+              <entry name="photo-video" id="73"/>
+              <entry name="infrastructure" id="74"/>
+              <entry name="instant-messaging" id="75"/>
+              <entry name="marketing" id="76"/>
+              <entry name="database" id="77"/>
+              <entry name="auth-service" id="78"/>
+              <entry name="general-business" id="79"/>
+              <entry name="audio-streaming" id="80"/>
+            </subcategory>
+          </entry>
+        </category>
+        <technology/>
+      </application-type>
+    </content-preview>
+    <log-settings>
+      <syslog>
+        <entry name="Wazuh-Logging">
+          <server>
+            <entry name="Wazuh">
+              <transport>UDP</transport>
+              <port>514</port>
+              <format>BSD</format>
+              <server>172.20.241.20</server>
+              <facility>LOG_USER</facility>
+            </entry>
+          </server>
+        </entry>
+      </syslog>
+      <system>
+        <match-list>
+          <entry name="PA-SysLog">
+            <send-syslog>
+              <member>Wazuh-Logging</member>
+            </send-syslog>
+            <filter>All Logs</filter>
+            <send-to-panorama>yes</send-to-panorama>
+          </entry>
+        </match-list>
+      </system>
+      <config>
+        <match-list>
+          <entry name="PA-ConfigLog">
+            <send-syslog>
+              <member>Wazuh-Logging</member>
+            </send-syslog>
+            <filter>All Logs</filter>
+            <send-to-panorama>yes</send-to-panorama>
+          </entry>
+        </match-list>
+      </config>
+      <iptag>
+        <match-list>
+          <entry name="PA-IPTagLog">
+            <send-syslog>
+              <member>Wazuh-Logging</member>
+            </send-syslog>
+            <filter>All Logs</filter>
+            <send-to-panorama>yes</send-to-panorama>
+          </entry>
+        </match-list>
+      </iptag>
+    </log-settings>
+    <certificate>
+      <entry name="TestCert">
+        <subject-hash>0702b7e2</subject-hash>
+        <issuer-hash>0702b7e2</issuer-hash>
+        <not-valid-before>Feb  6 21:59:59 2025 GMT</not-valid-before>
+        <issuer>172.20.242.150</issuer>
+        <not-valid-after>Feb  6 21:59:59 2026 GMT</not-valid-after>
+        <common-name>172.20.242.150</common-name>
+        <expiry-epoch>1770415199</expiry-epoch>
+        <ca>yes</ca>
+        <subject>172.20.242.150</subject>
+        <public-key>-----BEGIN CERTIFICATE-----
+MIIC3TCCAcWgAwIBAgIUEtFB8/OFwEVkuyuelqveb74+ybMwDQYJKoZIhvcNAQEL
+BQAwGTEXMBUGA1UEAwwOMTcyLjIwLjI0Mi4xNTAwHhcNMjUwMjA2MjE1OTU5WhcN
+MjYwMjA2MjE1OTU5WjAZMRcwFQYDVQQDDA4xNzIuMjAuMjQyLjE1MDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBAL/vnC90HWoe+tmYCY2tJmwycP3COtdY
+93aoQPoGT5mCHUzPkgCqLKXbvZXfSj9UCAYnxnHoBW29A9cH8AZOSB3TDMB+VJp1
+MWA96Pf9OTDLSQMpWHgPCSZDc3eJLXRVH7sr4yCCXQCaqFi5BBX3JhfhCKO/nxPz
+HBM2+U8LYScfVPtfogbjUi7Kn89xx0yF63rmKKIFe/fGvGYxqp1mc2HmOTJ6oMgf
+74zfPYAqCfQnwvtEoKzWCjUwJmklKE5hIR8w1SZd0XarlbH0T0lltTtZub3Puc6I
+dGpTJDoJOO7U84WoK5e9OoHPF7yT+lcYpjNK40VOi1CygpPbotG8dEsCAwEAAaMd
+MBswDAYDVR0TBAUwAwEB/zALBgNVHQ8EBAMCAgQwDQYJKoZIhvcNAQELBQADggEB
+AEKQk6Uh/0fF9DQ4qPkm8KTrS6BEJ6DI7grCPK2d8qqckTMC33pb025edOnPHzOe
+xmxu81DlC38vqy4ywLxm0G8wpiCCMAJuI9f0ihVI9DU2mW/oNyhs/WMDEYwl/ExR
+zQl9Rv8altazVIKYPVI90hd3rJZdZOg+iXnRnQwkpJzIyxvXxREBLkAPWoy7CD1N
+PrhUaCz45bKBduSYZ5R576iKPLIPMml3qfYMyII7XSMXjCezHi7OEzztTpQvkEDC
++Vp79VVfKzpO2RIAvTVjM/tKhmwXSBagPkgh/IesgTR4PGof5YoFc+6wWdN8Ls1R
+qxCNEbYl4peHU2vWzAzXcyE=
+-----END CERTIFICATE-----
+</public-key>
+        <algorithm>RSA</algorithm>
+        <private-key>-AQ==HLMX3PJIgGEWl1/3jvaDz5SaaQQ=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</private-key>
+      </entry>
+      <entry name="MailCert">
+        <subject-hash>311f8e86</subject-hash>
+        <issuer-hash>0702b7e2</issuer-hash>
+        <not-valid-before>Feb  6 22:01:14 2025 GMT</not-valid-before>
+        <issuer>172.20.242.150</issuer>
+        <not-valid-after>Feb  6 22:01:14 2026 GMT</not-valid-after>
+        <common-name>172.20.241.40</common-name>
+        <expiry-epoch>1770415274</expiry-epoch>
+        <ca>no</ca>
+        <subject>172.20.241.40</subject>
+        <public-key>-----BEGIN CERTIFICATE-----
+MIIDHTCCAgWgAwIBAgIFAMnEiWgwDQYJKoZIhvcNAQELBQAwGTEXMBUGA1UEAwwO
+MTcyLjIwLjI0Mi4xNTAwHhcNMjUwMjA2MjIwMTE0WhcNMjYwMjA2MjIwMTE0WjAY
+MRYwFAYDVQQDDA0xNzIuMjAuMjQxLjQwMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
+MIIBCgKCAQEAp3LJuE1F36MauPWp7DgGbxk+pFtEzJMz5iE/akSbElOAawjOA762
+O9vx/ZP33ka/2xeU4S6S7m3mZEYpgB7tvJ7ezo/qjqoJXclky0j1BIeZF87w0vAL
+S4YKxDTJ+VVcNOcVfPABAQAYamCIIkVNX8yfyp6qPgZvK6YmGk+2558y539TpZX3
+FpJ8DtNevYGPOxxgkTdiePOi1unmsIhaTKdCJhhE+L+0kCTWOY2P5vzTFrO517p/
+ZDs8Iumq/BHkuxuVkJv5BoY/Bx2ACCNo5oe7gU/Tdj4iWVBlRfcGkUfXyS+ZxsU4
+VFwkHJsjDN0MyxAN347hLkIMR+7/7etl0wIDAQABo20wazAJBgNVHRMEAjAAMAsG
+A1UdDwQEAwIDuDAnBgNVHSUEIDAeBggrBgEFBQcDAQYIKwYBBQUHAwIGCCsGAQUF
+BwMFMAkGA1UdIwQCMAAwHQYDVR0OBBYEFIPSgZ9wOGb2+Azr0sLpTX1tsZy0MA0G
+CSqGSIb3DQEBCwUAA4IBAQCNBzQ6yRmhbKzf7y84izNbI+moV7y+UfTASL5R4cZ4
+cSATWvpUGHxhHKwOInlcu2OtQWxIWw8S3XybLvP+gL1tnHUZUH6u412iapcudO2U
+077RzDqOSPKySXGrqpXHFxBo3ZLm30oKQS6dlX5lX6IeyLfcT0bN3ZedpZUnjD7K
+oE4ZE4KiQFeJd1lToBT2v9FZ5aYcuQ6/lYcsn4qlLYlbJCM1cFl2gU1yNX79IBC6
+StsyqoU20BDm6Jh4Uc0NoIwPXlLfw5WZmXs1JEG7TgztC6C2DNpBP14r5ngaUI9g
+VtqH5VbAZCSpf4lf/OnMQt318z5KabEmDim9WJW+7HaA
+-----END CERTIFICATE-----
+</public-key>
+        <algorithm>RSA</algorithm>
+        <private-key>-AQ==/TxzFspmiW3E5DshvURavXwD4WU=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</private-key>
+      </entry>
+      <entry name="WkstCert">
+        <subject-hash>4c3457ec</subject-hash>
+        <issuer-hash>0702b7e2</issuer-hash>
+        <not-valid-before>Feb  6 22:04:49 2025 GMT</not-valid-before>
+        <issuer>172.20.242.150</issuer>
+        <not-valid-after>Feb  6 22:04:49 2026 GMT</not-valid-after>
+        <common-name>172.20.242.30</common-name>
+        <expiry-epoch>1770415489</expiry-epoch>
+        <ca>no</ca>
+        <subject>172.20.242.30</subject>
+        <public-key>-----BEGIN CERTIFICATE-----
+MIIDHTCCAgWgAwIBAgIFAMnEiWkwDQYJKoZIhvcNAQELBQAwGTEXMBUGA1UEAwwO
+MTcyLjIwLjI0Mi4xNTAwHhcNMjUwMjA2MjIwNDQ5WhcNMjYwMjA2MjIwNDQ5WjAY
+MRYwFAYDVQQDDA0xNzIuMjAuMjQyLjMwMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
+MIIBCgKCAQEArkm1AmyZ/zdK85WUMUIKo7SUP2neBnJeLV1fKOKfWCuJJWnZl8e+
+76D8rajziFTSzpZWHTJh9JJrlSbE3ONA278BdC7zm0UlrriDHLwtmREslLBK+T9b
+yknqawCz8H/A2u9IepmZD0kx+XFrynBX4Pn6hgCHfRl0qJr7MSyTneD4F8zOvW52
+tZobJEIskrrrH/uo0BpcyENxrd+W6RY70IeFWFByOmu3JAeBT5t105f2EmUN9BTN
+OEDbmwtmxKePE4MP+rFqiIB1FTq4uQ72vJ5g4OuXTVoSMj50XFtQXkBtAlmeT7gg
+R/LZvfVH5Tc/m9ir3x0U5sCBfiR1gKBBNwIDAQABo20wazAJBgNVHRMEAjAAMAsG
+A1UdDwQEAwIDuDAnBgNVHSUEIDAeBggrBgEFBQcDAQYIKwYBBQUHAwIGCCsGAQUF
+BwMFMAkGA1UdIwQCMAAwHQYDVR0OBBYEFNcNHib0v1nXVJAyuvcpsKaI17xZMA0G
+CSqGSIb3DQEBCwUAA4IBAQBNzjipt7LXOTbLoS7qVazO2iI/qSHTydIfpq7n3Uqo
+4n+XV+ZoQnuNzEbamWO2rdfMks226dvEds5OqxO8+lio6SgnmdU6A0LsZ32KYHBa
+M5NqOqqI3JIBkmaOxKI2s+hBo55EgkjKS3wJdd4Nl6HAICil4M5VmCQ8zxaqcEXZ
+cNZxxoC7Qe3ylvHQvXS0O8U+bEdiYAyUCRTk3JEnolsrLHxWOpmbq3iiriZYc8aS
+/dK/f8OhbslPahV89aZI8uJg6YUqn3MjQ7axQ3xejh8w0GpAUOpfAiHEVjNQlZMV
+vX/GCptArgLTDSM4DMnN3h9ZcJ2hSUKdhYOepkDG2C7U
+-----END CERTIFICATE-----
+</public-key>
+        <algorithm>RSA</algorithm>
+        <private-key>-AQ==+8oge9f3Q+q5lpqhbtZyDwvQmnk=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</private-key>
+      </entry>
+    </certificate>
+  </shared>
+  <devices>
+    <entry name="localhost.localdomain">
+      <network>
+        <interface>
+          <ethernet>
+            <entry name="ethernet1/1">
+              <link-speed>auto</link-speed>
+              <link-duplex>auto</link-duplex>
+              <link-state>auto</link-state>
+              <comment>PUBLIC</comment>
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                      <min-interval>200</min-interval>
+                      <max-interval>600</max-interval>
+                      <hop-limit>64</hop-limit>
+                      <reachable-time>unspecified</reachable-time>
+                      <retransmission-timer>unspecified</retransmission-timer>
+                      <lifetime>1800</lifetime>
+                      <managed-flag>no</managed-flag>
+                      <other-flag>no</other-flag>
+                      <enable-consistency-check>no</enable-consistency-check>
+                      <link-mtu>unspecified</link-mtu>
+                    </router-advertisement>
+                    <enable-dad>no</enable-dad>
+                    <reachable-time>30</reachable-time>
+                    <ns-interval>1</ns-interval>
+                    <dad-attempts>1</dad-attempts>
+                  </neighbor-discovery>
+                  <enabled>no</enabled>
+                  <interface-id>EUI-64</interface-id>
+                </ipv6>
+                <untagged-sub-interface>no</untagged-sub-interface>
+                <interface-management-profile>Base</interface-management-profile>
+                <ip>
+                  <entry name="172.20.241.254/24"/>
+                </ip>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/2">
+              <link-speed>auto</link-speed>
+              <link-duplex>auto</link-duplex>
+              <link-state>auto</link-state>
+              <comment>INTERNAL</comment>
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                      <min-interval>200</min-interval>
+                      <max-interval>600</max-interval>
+                      <hop-limit>64</hop-limit>
+                      <reachable-time>unspecified</reachable-time>
+                      <retransmission-timer>unspecified</retransmission-timer>
+                      <lifetime>1800</lifetime>
+                      <managed-flag>no</managed-flag>
+                      <other-flag>no</other-flag>
+                      <enable-consistency-check>no</enable-consistency-check>
+                      <link-mtu>unspecified</link-mtu>
+                    </router-advertisement>
+                    <enable-dad>no</enable-dad>
+                    <reachable-time>30</reachable-time>
+                    <ns-interval>1</ns-interval>
+                    <dad-attempts>1</dad-attempts>
+                  </neighbor-discovery>
+                  <enabled>no</enabled>
+                  <interface-id>EUI-64</interface-id>
+                </ipv6>
+                <untagged-sub-interface>no</untagged-sub-interface>
+                <interface-management-profile>Base</interface-management-profile>
+                <ip>
+                  <entry name="172.20.240.254/24"/>
+                </ip>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/3">
+              <link-speed>auto</link-speed>
+              <link-duplex>auto</link-duplex>
+              <link-state>auto</link-state>
+              <comment>EXTERNAL</comment>
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                      <min-interval>200</min-interval>
+                      <max-interval>600</max-interval>
+                      <hop-limit>64</hop-limit>
+                      <reachable-time>unspecified</reachable-time>
+                      <retransmission-timer>unspecified</retransmission-timer>
+                      <lifetime>1800</lifetime>
+                      <managed-flag>no</managed-flag>
+                      <other-flag>no</other-flag>
+                      <enable-consistency-check>no</enable-consistency-check>
+                      <link-mtu>unspecified</link-mtu>
+                    </router-advertisement>
+                    <enable-dad>no</enable-dad>
+                    <reachable-time>30</reachable-time>
+                    <ns-interval>1</ns-interval>
+                    <dad-attempts>1</dad-attempts>
+                  </neighbor-discovery>
+                  <enabled>no</enabled>
+                  <interface-id>EUI-64</interface-id>
+                </ipv6>
+                <untagged-sub-interface>no</untagged-sub-interface>
+                <interface-management-profile>Base</interface-management-profile>
+                <ip>
+                  <entry name="172.31.23.2/29"/>
+                </ip>
+                <ndp-proxy>
+                  <enabled>no</enabled>
+                </ndp-proxy>
+                <lldp>
+                  <enable>no</enable>
+                </lldp>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/4">
+              <layer3>
+                <ipv6>
+                  <neighbor-discovery>
+                    <router-advertisement>
+                      <enable>no</enable>
+                    </router-advertisement>
+                  </neighbor-discovery>
+                </ipv6>
+                <ip>
+                  <entry name="172.20.242.254/24"/>
+                </ip>
+                <interface-management-profile>Base</interface-management-profile>
+              </layer3>
+              <comment>USER</comment>
+            </entry>
+          </ethernet>
+        </interface>
+        <virtual-wire/>
+        <profiles>
+          <monitor-profile/>
+          <interface-management-profile>
+            <entry name="Base">
+              <http>no</http>
+              <https>yes</https>
+              <http-ocsp>no</http-ocsp>
+              <ssh>yes</ssh>
+              <snmp>no</snmp>
+              <userid-service>no</userid-service>
+              <ping>yes</ping>
+              <response-pages>no</response-pages>
+              <telnet>no</telnet>
+            </entry>
+          </interface-management-profile>
+          <zone-protection-profile>
+            <entry name="ZoneLock">
+              <flood>
+                <tcp-syn>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </tcp-syn>
+                <udp>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </udp>
+                <icmp>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </icmp>
+                <icmpv6>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </icmpv6>
+                <other-ip>
+                  <red>
+                    <alarm-rate>10000</alarm-rate>
+                    <activate-rate>10000</activate-rate>
+                    <maximal-rate>40000</maximal-rate>
+                  </red>
+                  <enable>yes</enable>
+                </other-ip>
+              </flood>
+              <net-inspection>
+                <rule/>
+              </net-inspection>
+              <scan>
+                <entry name="8001">
+                  <action>
+                    <block/>
+                  </action>
+                  <interval>2</interval>
+                  <threshold>100</threshold>
+                </entry>
+                <entry name="8002">
+                  <action>
+                    <block/>
+                  </action>
+                  <interval>10</interval>
+                  <threshold>100</threshold>
+                </entry>
+                <entry name="8003">
+                  <action>
+                    <block/>
+                  </action>
+                  <interval>2</interval>
+                  <threshold>100</threshold>
+                </entry>
+              </scan>
+              <discard-ip-spoof>yes</discard-ip-spoof>
+            </entry>
+          </zone-protection-profile>
+        </profiles>
+        <qos>
+          <profile>
+            <entry name="default">
+              <class-bandwidth-type>
+                <mbps>
+                  <class>
+                    <entry name="class1">
+                      <priority>real-time</priority>
+                    </entry>
+                    <entry name="class2">
+                      <priority>high</priority>
+                    </entry>
+                    <entry name="class3">
+                      <priority>high</priority>
+                    </entry>
+                    <entry name="class4">
+                      <priority>medium</priority>
+                    </entry>
+                    <entry name="class5">
+                      <priority>medium</priority>
+                    </entry>
+                    <entry name="class6">
+                      <priority>low</priority>
+                    </entry>
+                    <entry name="class7">
+                      <priority>low</priority>
+                    </entry>
+                    <entry name="class8">
+                      <priority>low</priority>
+                    </entry>
+                  </class>
+                </mbps>
+              </class-bandwidth-type>
+            </entry>
+          </profile>
+        </qos>
+        <virtual-router>
+          <entry name="RT1">
+            <protocol>
+              <bgp>
+                <enable>no</enable>
+                <dampening-profile>
+                  <entry name="default">
+                    <cutoff>1.25</cutoff>
+                    <reuse>0.5</reuse>
+                    <max-hold-time>900</max-hold-time>
+                    <decay-half-life-reachable>300</decay-half-life-reachable>
+                    <decay-half-life-unreachable>900</decay-half-life-unreachable>
+                    <enable>yes</enable>
+                  </entry>
+                </dampening-profile>
+                <routing-options>
+                  <med>
+                    <always-compare-med>no</always-compare-med>
+                    <deterministic-med-comparison>yes</deterministic-med-comparison>
+                  </med>
+                  <aggregate>
+                    <aggregate-med>yes</aggregate-med>
+                  </aggregate>
+                  <graceful-restart>
+                    <enable>yes</enable>
+                    <stale-route-time>120</stale-route-time>
+                    <local-restart-time>120</local-restart-time>
+                    <max-peer-restart-time>120</max-peer-restart-time>
+                  </graceful-restart>
+                  <as-format>2-byte</as-format>
+                  <default-local-preference>100</default-local-preference>
+                </routing-options>
+                <reject-default-route>yes</reject-default-route>
+                <allow-redist-default-route>no</allow-redist-default-route>
+                <install-route>no</install-route>
+              </bgp>
+              <rip>
+                <enable>no</enable>
+              </rip>
+              <ospf>
+                <enable>no</enable>
+              </ospf>
+              <ospfv3>
+                <enable>no</enable>
+              </ospfv3>
+            </protocol>
+            <admin-dists>
+              <static>10</static>
+              <ospf-int>30</ospf-int>
+              <ospf-ext>110</ospf-ext>
+              <ibgp>200</ibgp>
+              <ebgp>20</ebgp>
+              <rip>120</rip>
+            </admin-dists>
+            <interface>
+              <member>ethernet1/1</member>
+              <member>ethernet1/2</member>
+              <member>ethernet1/3</member>
+              <member>ethernet1/4</member>
+            </interface>
+            <routing-table>
+              <ip>
+                <static-route>
+                  <entry name="default">
+                    <path-monitor>
+                      <enable>no</enable>
+                      <failure-condition>any</failure-condition>
+                      <hold-time>2</hold-time>
+                    </path-monitor>
+                    <nexthop>
+                      <ip-address>172.31.23.1</ip-address>
+                    </nexthop>
+                    <bfd>
+                      <profile>None</profile>
+                    </bfd>
+                    <interface>ethernet1/3</interface>
+                    <metric>10</metric>
+                    <destination>0.0.0.0/0</destination>
+                    <route-table>
+                      <unicast/>
+                    </route-table>
+                  </entry>
+                </static-route>
+              </ip>
+            </routing-table>
+            <ecmp>
+              <algorithm>
+                <ip-modulo/>
+              </algorithm>
+            </ecmp>
+          </entry>
+        </virtual-router>
+        <ike>
+          <crypto-profiles>
+            <ike-crypto-profiles/>
+            <ipsec-crypto-profiles/>
+            <global-protect-app-crypto-profiles>
+              <entry name="default">
+                <encryption>
+                  <member>aes-128-cbc</member>
+                </encryption>
+                <authentication>
+                  <member>sha1</member>
+                </authentication>
+              </entry>
+            </global-protect-app-crypto-profiles>
+          </crypto-profiles>
+          <gateway/>
+        </ike>
+        <tunnel>
+          <ipsec/>
+          <global-protect-gateway/>
+        </tunnel>
+        <dhcp>
+          <interface>
+            <entry name="ethernet1/4">
+              <server>
+                <option>
+                  <lease>
+                    <timeout>1440</timeout>
+                  </lease>
+                  <gateway>172.20.242.254</gateway>
+                  <dns>
+                    <primary>172.20.241.27</primary>
+                    <secondary>172.20.240.23</secondary>
+                  </dns>
+                </option>
+                <ip-pool>
+                  <member>172.20.242.101-172.20.242.150</member>
+                </ip-pool>
+                <mode>enabled</mode>
+                <probe-ip>yes</probe-ip>
+              </server>
+            </entry>
+            <entry name="ethernet1/1">
+              <server>
+                <option>
+                  <lease>
+                    <timeout>1440</timeout>
+                  </lease>
+                  <gateway>172.20.241.254</gateway>
+                </option>
+                <ip-pool>
+                  <member>172.20.241.101-172.20.241.150</member>
+                </ip-pool>
+                <mode>enabled</mode>
+                <probe-ip>yes</probe-ip>
+              </server>
+            </entry>
+            <entry name="ethernet1/2">
+              <server>
+                <option>
+                  <lease>
+                    <timeout>1440</timeout>
+                  </lease>
+                  <gateway>172.20.240.254</gateway>
+                </option>
+                <ip-pool>
+                  <member>172.20.240.101-172.20.240.150</member>
+                </ip-pool>
+                <mode>enabled</mode>
+                <probe-ip>yes</probe-ip>
+              </server>
+            </entry>
+          </interface>
+        </dhcp>
+        <dns-proxy/>
+      </network>
+      <deviceconfig>
+        <system>
+          <ip-address>172.20.242.150</ip-address>
+          <netmask>255.255.255.0</netmask>
+          <update-server>updates.paloaltonetworks.com</update-server>
+          <update-schedule>
+            <threats>
+              <recurring>
+                <weekly>
+                  <day-of-week>wednesday</day-of-week>
+                  <at>01:02</at>
+                  <action>download-only</action>
+                </weekly>
+              </recurring>
+            </threats>
+          </update-schedule>
+          <timezone>US/Central</timezone>
+          <service>
+            <disable-telnet>yes</disable-telnet>
+            <disable-http>yes</disable-http>
+            <disable-snmp>yes</disable-snmp>
+          </service>
+          <snmp-setting>
+            <snmp-system/>
+          </snmp-setting>
+          <hostname>PA-VM</hostname>
+          <default-gateway>172.20.242.254</default-gateway>
+          <dns-setting>
+            <servers>
+              <primary>172.20.242.200</primary>
+              <secondary>172.20.240.20</secondary>
+            </servers>
+          </dns-setting>
+          <server-verification>yes</server-verification>
+          <ntp-servers>
+            <primary-ntp-server>
+              <ntp-server-address>172.20.240.20</ntp-server-address>
+              <authentication-type>
+                <none/>
+              </authentication-type>
+            </primary-ntp-server>
+          </ntp-servers>
+        </system>
+        <setting>
+          <custom-logo>
+            <pdf-report-header>
+              <name>logo_pan.gif</name>
+              <content>
+/9j/4AAQSkZJRgABAQIAOwA7AAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8L
+CwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUF
+BQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4e
+Hh4eHh4eHh4eHh4eHh7/wAARCAHqAkgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEA
+AAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIh
+MUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6
+Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZ
+mqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx
+8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA
+AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAV
+YnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hp
+anN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE
+xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD7
+LooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiig
+AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACuU+IPxD8J+BbUS6/qaxz
+uu6K0iG+eT6KOg9zge9ed/tB/GyPwgZfDfhh459eK4nnIDJZg+3RpPY8DvnpXyPq
+d/e6nfzX+o3U13dzsXlmmcs7n1JNd2HwbqLmlojzcXmCpPkhqz3rxh+09rt1I8Ph
+bRLTToegmuyZpT7hRhV+h3V51qXxl+Jt+5ebxffR57W6pCB/3worgaK9KOHpR2ie
+PPFVpvWTOv8A+Fn/ABE/6HXXf/A1/wDGj/hZ/wARP+h113/wNf8AxrkKKv2cOyM/
+a1P5mdf/AMLP+In/AEOuu/8Aga/+NH/Cz/iJ/wBDrrv/AIGv/jXIUUezh2Qe1qfz
+M6//AIWf8RP+h113/wADX/xo/wCFn/ET/oddd/8AA1/8a5Cij2cOyD2tT+ZnX/8A
+Cz/iJ/0Ouu/+Br/40f8ACz/iJ/0Ouu/+Br/41yFFHs4dkHtan8zOv/4Wf8RP+h11
+3/wNf/Gj/hZ/xE/6HXXf/A1/8a5Cij2cOyD2tT+ZnX/8LP8AiJ/0Ouu/+Br/AONH
+/Cz/AIif9Drrv/ga/wDjXIUUezh2Qe1qfzM6/wD4Wf8AET/oddd/8DX/AMaP+Fn/
+ABE/6HXXf/A1/wDGuQoo9nDsg9rU/mZ1/wDws/4if9Drrv8A4Gv/AI0f8LP+In/Q
+667/AOBr/wCNchRR7OHZB7Wp/Mzr/wDhZ/xE/wCh113/AMDX/wAaP+Fn/ET/AKHX
+Xf8AwNf/ABrkKKPZw7IPa1P5mdf/AMLP+In/AEOuu/8Aga/+NH/Cz/iJ/wBDrrv/
+AIGv/jXIUUezh2Qe1qfzM6//AIWf8RP+h113/wADX/xo/wCFn/ET/oddd/8AA1/8
+a5Cij2cOyD2tT+ZnX/8ACz/iJ/0Ouu/+Br/40q/FD4iqcjxrrn43jn+tcfRR7OHZ
+B7Wp/M/vPS9F+OvxO0yRT/wkZvYx1ju7eOQH8cbvyNer+Bv2nrOeSO28ZaIbMnhr
+ywJeMe5jb5gPoWPtXy7RWc8LSnujanjK1N6S+8/R/wAO65pHiLS49U0PUbe/s5Pu
+ywvkZ9COoPscEVo1+eXgDxr4h8D60uqaBetCxwJoW+aKdf7rr3Hv1HYivtj4RfEb
+R/iL4f8At1j/AKPfQYW9smbLQse49UPOG/kQRXl4jCyparVHtYTGxr+69GdrRRRX
+IdwUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRR
+RQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFeb/ALQfxDHgDwW0lm6f2zqB
+MNip52HHzSkeigj8SvbNekV8MftI+LH8VfFPUjHLvsdNY2NqAeMISHb3y+459Mel
+dWEo+1qa7I48dXdGlpuzzq4mluLiS4uJXlmlYvI7tlmYnJJJ6kmo6KK9w+aCiiig
+QUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQ
+AUUUUAFdF8OvF2qeCPFdpr+lv88J2zQk4WeI/eRvY/oQD2rnaKTSkrMqMnF3W5+j
+3hbW9P8AEnh6x13S5fNs72ESxnuM9VPoQcgj1Bor5/8A2LPFjy2+reDLqXIhH26z
+BPRSQsqj2yUOPdqK+fr0/ZTcT6nDVvbU1M+kqKKKyNwooooAKKKKACiiigAooooA
+KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA
+KKKKACiiigDN8U6j/ZHhjVdW4/0KymuOf9hC39K/OOR3kkaSRizsSzMTkknvX6Bf
+GRivwn8VkHH/ABKLkfnGwr8+69XLl7smeJmz96KCiiivRPICiiigAooooAKKKKAC
+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP
+RP2b9UfSvjP4fkDYS4ma1cf3hIhUD/voqfworD+EbFfir4TIOP8AidWg/OZaK8nM
+F76fke9lT/dyXmfoRRRRXnnqBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUU
+UUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk
+3iv/ALBNx/6LNfn5X6B/Gb/kk3iv/sE3H/os1+fletl3wM8PNvjj6BRRRXoHkhRR
+RQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRR
+RQAUUUUAFFFFAHT/AAm/5Kp4T/7Ddn/6PSij4Tf8lU8J/wDYbs//AEelFeVmPxRP
+cyn4Jep+hNFFFecesFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUU
+AFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAcl8Zv8Akk3iv/sE
+3H/os1+flfoH8Zv+STeK/wDsE3H/AKLNfn5XrZd8DPDzb44+gUUUV6B5IUUUUAFF
+FFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFTWdtPeXUdraxNLNI
+21FHc16XoXgHTbaFX1Qm8nI5UMVjX6YwT9T+VeRm+e4PKYKWIlq9ktW/68zWnSlU
+2PLqK9jvvBvh66iKCxEDYwHhYqR+HQ/iK8u8SaRPomqvYzsHAAaOQDAdD0OO3Qj6
+g1zZNxLgs3k4UbqS1s9HburNodSjKnqzNooor6AxCiiigAooooA6f4Tf8lU8J/8A
+Ybs//R6UUfCb/kqnhP8A7Ddn/wCj0orysx+KJ7mU/BL1P0Jooorzj1gooooAKKKK
+ACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKK
+ACiiigAooooAKKKKACiiigDkvjN/ySbxX/2Cbj/0Wa/Pyv0D+M3/ACSbxX/2Cbj/
+ANFmvz8r1su+Bnh5t8cfQKKKK9A8kKKKKACiiigAooooAKKKKACiiigAooooAKKK
+KACiivfv2XfhJZeJUPjDxNbC40yKUpZWjj5Lh1+87jugPGO5BzwMHOrVjSjzSNqN
+GVafJE8i8PeCPF/iGD7RovhrVL6DtNFbMYz/AMCxj9apeIfDuveHbhbfXdHvtNkb
+lBcwNHv91JGD+Ffo1FGkUaxRIqRoAqqowFA6ACsnxj4b0jxZ4eudD1q1We1uFI5H
+zRt2dT2YdjXnrMXzarQ9SWUrl0lqfnPRWh4l0ubQ/EWpaLcMGlsLqW2dgOGKMVJ/
+HFZ9eonfU8Zqzsz0D4RaejPeanIgLJiGI+ndv/Zf1r0OuX+F9uIfCcUgPNxK8h/A
+7f8A2Wuor8F4txTxObVnfSL5V8tPzuepQjamgrzn4wtF9r05RjzRG5b125GP5GvR
+q8m+KNwJ/Fbxgf8AHvCkZ985b/2avQ4Douea8y+zFv8AJfqRiXamcrRRRX7UeaFF
+FFABRRRQB0/wm/5Kp4T/AOw3Z/8Ao9KKPhN/yVTwn/2G7P8A9HpRXlZj8UT3Mp+C
+XqfoTRRRXnHrBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRR
+QAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk3iv/ALBNx/6L
+Nfn5X6B/Gb/kk3iv/sE3H/os1+fletl3wM8PNvjj6BRRRXoHkhRRRQAUUUUAFFFF
+ABRRRQAUUUUAFFFFABRRRQAV+hPwn0pdF+GfhzTQgRotOhMgx/y0ZQz/APjzGvgb
+w1pzav4j0zSVzuvbuK3GPV3C/wBa/R9FVEVEAVVGAB2FebmMtIxPYymGspC0UVie
+PtT/ALG8D67qwba1pp88yn/aVCVH54rzErux7MnZXZ8B+OtRGseNdc1VSCt5qE86
+49GkYj9DWNRU9hbtd31vaqcNNKsYPuSB/WvpNIx8kfINuTue2eGbf7L4e0+ApsZb
+dNw9GIyf1JrQoAAGBwKK/mrF13iK86r+02/vdz10rKwV4f4ruGuvEuozFg2bh1U/
+7KnA/QCva7ydLW0muZOEijaRvoBk14ExLEsSSTySa/RvDnD616z8l+bf6HJi3okJ
+XpnwU+EWr/EW5e7eU6dokD7JrsplpG6lIx3Pqegz36V5xawSXN1FbQrullcIg9ST
+gCv0V8HaDZeGPC+naBp6KtvZQLECBje38TH3Y5J9zX6Li67pRSjux4DCqvNuWyOC
+0r9n/wCF9lZiCbQ57+TGGnuL2Xe3/fDKo/ACvKfjz8BbLw9oVx4n8HPcG0tRvvLG
+V95jj7ujdSB1IOeMnPGK+qay/FzW6+E9Ya7ANsLGczA9Nnltu/TNebTxNSMk73PY
+q4OjKDXKkfnHRRRXunzB0/wm/wCSqeE/+w3Z/wDo9KKPhN/yVTwn/wBhuz/9HpRX
+lZj8UT3Mp+CXqfoTRRRXnHrBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUU
+UAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk3
+iv8A7BNx/wCizX5+V+gfxm/5JN4r/wCwTcf+izX5+V62XfAzw82+OPoFFFFegeSF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHon7N+mf2p8aPD0RXKQTPcsfTy0Z
+wf8AvoL+dfdlfJH7FemfaPiBquqMuVs9OMYPo8jrj9EavrevGx8r1bdj6HLI2o37
+sK8v/ak1P+zfgtq6q22S8eG2T/gUgLD/AL5Vq9Qr56/bc1PyvC3h/Rw3NzeyXJHt
+Em3/ANq1jho81WKOjFz5KEn5HypW54Ct1ufFtgjDKq5k+hVSw/UCsOu0+Eduz65c
+3O0FIrfbn0ZmGP0BrrzzEfV8ur1O0X97Vl+J81SV5pHp9FFFfzqesYvjq5Nr4T1C
+QdWi8v8A77IU/oa8Wr1L4tXHl+H4IA+DNcDI9VAJP67a8tr9q4Cw/ssq5/55N/dZ
+foedinedjsPgppn9r/FnwzZFdy/2hHK49VjPmMPyU1+gFfGn7Humfbfi59sK5Gn6
+fNOD6M22Mfo5r7Lr3Mwleol2R62VxtSb7sK4P9oPU/7K+DXiW4DbWltPsw9/NYRn
+9HNd5Xh37Z2p/ZfhpY6crYe+1JNw9URGY/8Aj2yuahHmqRXmdmJlyUZPyPkCiiiv
+oT5Q6f4Tf8lU8J/9huz/APR6UUfCb/kqnhP/ALDdn/6PSivKzH4onuZT8EvU/Qmi
+iivOPWCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAoooo
+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKAOS+M3/ACSbxX/2Cbj/ANFmvz8r
+9A/jN/ySbxX/ANgm4/8ARZr8/K9bLvgZ4ebfHH0CiiivQPJCiiigAooooAKKKKAC
+iiigAoor6Z/Za+Emn3WmQ+OfE1ol0ZWJ0y1lXKKoOPOZT1JIO0HgAZ5yMZ1qsaUe
+Zm9ChKvPlieI6B8OPHeu2i3mleFdUuLZhlJTCURx6qWwG/CsjxF4e1zw7di013Sb
+3TZmGVW4hKbh6qTwR7iv0crn/iF4S0rxr4Wu9C1WFGSVCYZduWgkx8sinsQfzGQe
+DXnxzB83vLQ9OeVLl92Wp+d9FTXtvLZ3k9pOMSwSNG49GU4P8qhr1Dxj6u/Yk0zy
+fCOv6wVwbq+S3B9REm7+cpr6CrzL9l7TP7N+C2jFl2yXZluX990jBT/3yFr02vAx
+MuarJn1OEhyUIryCvkb9tLU/tPxD0zTFbKWWnBmHo8jsT/46qV9c18IftGan/avx
+n8RzBspDcLbKPTykVCPzU1tgI3q37I5sznajbuzz6vSvhBbhdMvrvPMkyx4/3Vz/
+AOz15rXsPw5t/I8I2hKbWlLyN75Y4P5AV5HHWI9llMo/ztL9f0PHwqvM6KiiivxE
+9E82+MFwG1CwtMcxxNIT/vHH/slcLXSfEq4afxdcoSCsKpGv02gn9Sa5uv6F4ew/
+1fK6FP8Aup/fr+p5VZ3mz6a/Yf0zEfibWXXqYLaM/Tezj9Ur6Wrx79kLTPsPwfiu
+yuDqN9PcZ9QCIv8A2ma9hrLFS5q0j6PBR5aEUFfLP7b2p+Zr/hzRg3+otZblh/10
+cKP/AEUa+pq+JP2rNT/tH40anEG3JYwwWyn6IHI/76dq0wMb1b9jHMpctC3dnlVF
+Fe3/ALM3wltvGVxL4l8RRM+i2kvlw2+SBdSjk5PXYuRn1Jx2Ir16lSNOPNI8KjSl
+VmoROI+Cug65qPxF8N39ho+oXVpbavayTzw2zvHEqzKWLMBgADnmivvOztbaytY7
+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
+p4T/AOw3Z/8Ao9KKPhN/yVTwn/2G7P8A9HpRXlZj8UT3Mp+CXqfoTRRRXnHrBRRR
+QAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRR
+QAUUUUAFFFFABRRRQAUUUUAFFFFAHJfGb/kk3iv/ALBNx/6LNfn5X6I/EiyfUfh7
+4jsIxl7jS7mNB/tGJgP1xX53V62XP3ZHh5svfi/IKKKK9A8kKKKKAPp79ivxRYpp
+2reD55kjvGuft1srHHmgoqOB6ldinHoSexr6Sr81rG7urC8ivLK5mtrmFg8UsTlX
+Rh0II5Br0yy/aA+KFtZC2OtwTlRgSy2cbSD8cc/Ug152IwUpz5ovc9fCZhGnTUJr
+Y+xfGPiXRvCWg3Gta5eJbWsI7n5pG7Ig/iY9h/Svgj4i+Kbvxn4z1HxHeL5bXcmY
+4s5EUYAVE/BQOe5ye9QeLfFfiPxZfC98RavdajMuQnmt8qZ6hVGFX8AKxa3w2FVH
+V7nNjMY8RolZIK+0/wBkbTPsHwctrkrg6heT3J98MIx/6Lr4sr9CPhJpn9j/AAx8
+N6eV2vHpsJkHo7KGb/x5jWWYStTS8zbKo3quXZHUUUUV5B7x8QftTan/AGj8adWR
+W3R2UcNsn4RhmH/fTNXl1bnxA1P+2fHWu6qG3Ld6hPKh/wBkuSo/LFYdfR0o8sEj
+5KtLnqSl3Z9k/sd6Z9i+EzXrL82oahLMD6qoWMD80b869nrz39nBrZvgp4b+ykFB
+BIGx2fzX3f8Aj2a9Crwa7vVk/M+mw0eWjFLsgr4q/a11P7f8Zby3Dbl0+0gth/3z
+5h/WQ19nahd22n2M99ezpBbW8bSzSucKiKMkn2Ar88/iDrv/AAk3jfWdfAZUvryS
+WNW6qhPyA+4XArry+F5uRxZrNKmo92YVFFFeseCFFFFABRRRQAUUUUAFFFFABRRR
+QAUUUUAdP8Jf+SqeE/8AsN2f/o5KKvfAqye/+MHhaBBkrqEc34R/vD+i0V5OYv30
+e7lS/dyfmffdFFFeeeqFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUU
+UUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUABAIIIyD1Ffnp8
+UPDj+E/H+s6AyFY7a5byM94m+aM/98la/Quvnv8AbB8AyanpMHjfTIS9xp6eTfqo
+5aDOVf8A4CSc+zZ6LXbgavJUs+p5+ZUXUpcy3R8p0UUV7J86FFFFABRRRQAUUUUA
+XvD9g2q69p+lpndeXUVuuPV3C/1r9II0SONY41CooCqB2Ar84/C2p/2L4n0rWQhk
++wXsN1tH8XluGx+lfoloup2Os6Ta6rplwlzZ3UQlhlQ8Mp/kfUdjXmZje8ex7WU2
+tLvoXKxvHOp/2L4L1vV9202dhPOp/wBpUJH64rZr52/a0+JllDo0vgLRrlJ7y4Zf
+7SeNsiBAQRHkfxEgZHYDB61w0abqTUUejiKqpU3JnyxRRRX0J8oetfAb4x3Pw8Mu
+lalay3+hTyeYY4yPNt3PBZM8EHAypI9QRzn3eb9oz4aJZ+et1qcsmM+Qtk2/6ZJC
+/rXxdRXNUwlOpLmZ20cdVpR5VseufGr43av49gbR9Ot20rQtwLw78y3GDx5hHGO+
+0cZ6k8Y8jooreFONNcsUc1SrOrLmm7sKKKKozCiiigAooooAKKKKACiiigAooooA
+KKKls7a4vLuG0tYXnuJnEcUaDLOxOAAO5JoGe6fsZeG3v/HN/wCJJU/caXbGONiP
++W0uRx9ED5/3hRX0F8FfBUfgPwBZaK2xr183F869GmYDIz3CgBR7LnvRXgYmr7So
+2tj6fB0fY0lF7na0UUVgdQUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFA
+BRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUyeKKeF4Zo
+0kikUq6OMqykYII7in0UAfGX7Qfwdu/BWoS67oUEk/hud88ZZrJifuN/sZ6N+B5w
+T45X6WzwxXEDwTxJLFIpV0dQysp4IIPUV89/FT9m6y1CWXU/A1zFp87Es+nzk+Sx
+/wCmbclPocj3UV6mHxqty1PvPFxeXO/NS+4+VqK6Dxb4K8V+FJjH4g0K9sQDgSvH
+uib6SDKn8DXP16KaaujyZRcXZoKKKKZIUUUUAFdh4C+JfjPwQjQaBrDxWjtua1lQ
+Swk+oVvun3XBNcfRSlFSVmiozlB3i7M9N8SfHX4la3ZtaPra2ELjDixhWJiP9/7w
+/AivM2ZmYsxLMTkknJJpKKUYRhpFWKnUnUd5O4UUUVRmFFFFABRRRQAUUUUAFFFF
+ABRRRQAUUUUAFFFFABRQOTgV33gb4QePPF0kbWWiy2dm/W8vgYYgPUZG5v8AgINT
+KcYK8nYuEJTdoq5waI0jqiKWdjhVAySfQV9Y/s0/BuTw75Xi/wAVW23VnXNlaOOb
+VSPvuP8AnoQen8I9zx1Pwi+CXhvwK0WpXJ/tfXFGRdSphIT/ANMk7H/aOT9M4r1S
+vLxOM51yw2PaweX+zfPU37BRRRXnnqhRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR
+RRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR
+RRQAUUUUAFFFFACOquhR1DKwwQRkEVzWpfD7wLqLmS98IaHLIer/AGGMMfqQM101
+FNSa2ZMoqW6OK/4VN8Nv+hM0j/vzR/wqb4bf9CbpP/fmu1oqvaz7sn2NP+VfccV/
+wqb4bf8AQm6T/wB+aP8AhU3w2/6E3Sf+/NdrRR7Wfdh7Gn/KvuOK/wCFTfDb/oTd
+J/780f8ACpvht/0Juk/9+a7Wij2s+7D2NP8AlX3HFf8ACpvht/0Juk/9+aP+FTfD
+b/oTdJ/7812tFHtZ92Hsaf8AKvuOK/4VN8Nv+hN0n/vzR/wqb4bf9CbpP/fmu1oo
+9rPuw9jT/lX3HFf8Km+G3/Qm6T/35o/4VN8Nv+hN0n/vzXa0Ue1n3Yexp/yr7jiv
++FTfDb/oTdJ/780f8Km+G3/Qm6T/AN+a7Wij2s+7D2NP+VfccV/wqb4bf9CbpP8A
+35o/4VN8Nv8AoTdJ/wC/NdrRR7Wfdh7Gn/KvuOK/4VN8Nv8AoTdJ/wC/NH/Cpvht
+/wBCbpP/AH5rtaKPaz7sPY0/5V9xxX/Cpvht/wBCbpP/AH5o/wCFTfDb/oTdJ/78
+12tFHtZ92Hsaf8q+44r/AIVN8Nv+hN0n/vzR/wAKm+G3/Qm6T/35rtaKPaz7sPY0
+/wCVfccV/wAKm+G3/Qm6T/35pV+FHw3U5HgzSPxgBrtKKPaz7sPY0/5V9xi6N4T8
+LaK4fSPDmkWDjo9vZxo35gZraooqW29y0ktEFFFFIYUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
+FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAeWftC/FOT4c6TaQad
+Zpc6tqIfyGlH7qFVxuZgOWPzDA/E9MH5dvfjB8S7u9N3J4w1FHJzthYRoP8AgCgL
++leqftw/8hXwt/1wuf8A0KOvnCvZwdGHslJrVnz+Pr1PbOKeiPqP9nv45azr/iK1
+8JeLES7nusra38UYRtwUttkUYBBAOGAHPUHOR9G18Ifs5/8AJa/DX/Xw/wD6Kevu
++uLG04wqe6j0cuqzqUnzO9mFFFFcZ3hRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR
+RRQAUUUUAFFFFABRRRQAUUUUAVdXvodM0u51CcMYreJpGCjJIAzgV4br/wARfEmp
+XLNbXZ0+3z8kUHBA926k/kPavYPH/wDyJWsf9ej/AMq+bq+F4ux+Io1IUac3FNXd
+tOpx4mck0kzsvD/xG8R6bcqbq6Oo2+fnin649m6g/mPavctKvYdS0y21CAMIriJZ
+EDDBAIzzXy3X0n4D/wCRL0f/AK84/wD0EUcI4/EVpzpVZuSSur69Qw05NtNm1RRR
+X3R2BRRWR4n8R6V4dtBPqU5Uvny4kGXk+g/qeKzq1oUYOdR2S6sTaSuzXorzMfF7
+TvPwdHuhDn7wlXdj6dP1ruPDfiDS/ENmbnTLjzAvEkbDDxn0I/yK4sLm2Dxc+SjU
+Tfb/AIcmNSMnZM1KKKK9EsKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiig
+AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD5e/bh/5Cvhb/rhc
+/wDoUdfOFfR/7cP/ACFfC3/XC5/9Cjr5wr3cH/BifM4//eJf10PQf2c/+S1+Gv8A
+r4f/ANFPX3fXwh+zn/yWvw1/18P/AOinr7vrhzD+IvQ9PKv4T9f8gooorgPTCiii
+gAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAw/H//ACJW
+sf8AXo/8q+bq+kfH/wDyJWsf9ej/AMq+bq/OeNP95p/4f1OHFfEgr6T8B/8AIl6P
+/wBecf8A6CK+bK+k/Af/ACJej/8AXnH/AOginwX/ALzU/wAP6hhfiZtUUUV+incF
+eF/G4k+NiCSQLaPHt1r3SvCvjb/yO7f9e0f9a+X4v/5F/wD28v1OfE/AcPXf/Akk
+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
+</content>
+            </pdf-report-header>
+          </custom-logo>
+          <config>
+            <rematch>yes</rematch>
+          </config>
+          <management>
+            <idle-timeout>0</idle-timeout>
+            <quota-settings/>
+            <common-criteria-alarm-generation>
+              <enable-alarm-generation>yes</enable-alarm-generation>
+              <enable-web-alarm-notification>yes</enable-web-alarm-notification>
+            </common-criteria-alarm-generation>
+          </management>
+          <http2>
+            <connection-logging>yes</connection-logging>
+          </http2>
+        </setting>
+      </deviceconfig>
+      <vsys>
+        <entry name="vsys1">
+          <application/>
+          <application-group/>
+          <zone>
+            <entry name="Public">
+              <network>
+                <layer3>
+                  <member>ethernet1/1</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+            <entry name="Internal">
+              <network>
+                <layer3>
+                  <member>ethernet1/2</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+            <entry name="External">
+              <network>
+                <layer3>
+                  <member>ethernet1/3</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+            <entry name="User">
+              <network>
+                <layer3>
+                  <member>ethernet1/4</member>
+                </layer3>
+                <net-inspection>yes</net-inspection>
+                <log-setting>Wazuh</log-setting>
+                <enable-packet-buffer-protection>yes</enable-packet-buffer-protection>
+                <zone-protection-profile>ZoneLock</zone-protection-profile>
+              </network>
+            </entry>
+          </zone>
+          <service>
+            <entry name="dns">
+              <protocol>
+                <udp>
+                  <port>53</port>
+                  <override>
+                    <no/>
+                  </override>
+                </udp>
+              </protocol>
+            </entry>
+            <entry name="ldap">
+              <protocol>
+                <tcp>
+                  <port>389</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="ldaps">
+              <protocol>
+                <tcp>
+                  <port>636</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="ntp">
+              <protocol>
+                <udp>
+                  <port>123</port>
+                  <override>
+                    <no/>
+                  </override>
+                </udp>
+              </protocol>
+            </entry>
+            <entry name="pop3">
+              <protocol>
+                <tcp>
+                  <port>110</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="syslog">
+              <protocol>
+                <udp>
+                  <port>514</port>
+                  <override>
+                    <no/>
+                  </override>
+                </udp>
+              </protocol>
+            </entry>
+            <entry name="smtp">
+              <protocol>
+                <tcp>
+                  <port>25</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="splunk-webui">
+              <protocol>
+                <tcp>
+                  <port>8000</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+            </entry>
+            <entry name="Wazuh-Connection">
+              <protocol>
+                <tcp>
+                  <port>1514</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+              <description>Wazuh Agent Connection Service</description>
+            </entry>
+            <entry name="Wazuh-Enroll">
+              <protocol>
+                <tcp>
+                  <port>1515</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+              <description>Wazuh agent enrollment service</description>
+            </entry>
+            <entry name="Wazuh-Cluster">
+              <protocol>
+                <tcp>
+                  <port>1516</port>
+                  <override>
+                    <no/>
+                  </override>
+                </tcp>
+              </protocol>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+              <description>Wazuh cluster daemon</description>
+            </entry>
+          </service>
+          <service-group>
+            <entry name="Wazuh-Services">
+              <members>
+                <member>Wazuh-Cluster</member>
+                <member>Wazuh-Connection</member>
+                <member>Wazuh-Enroll</member>
+              </members>
+              <tag>
+                <member>wazuh</member>
+              </tag>
+            </entry>
+          </service-group>
+          <schedule/>
+          <rulebase>
+            <security>
+              <rules>
+                <entry name="TestRule" uuid="931470b3-d9c5-4e8d-be4a-435eba500033">
+                  <to>
+                    <member>any</member>
+                  </to>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <action>allow</action>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Wkst-Internet" uuid="eaae7edc-6e36-4e78-a4d9-1513051c06a5">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>apt-get</member>
+                    <member>github</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="PA-Internet" uuid="5142caf6-fd1f-40fe-aa1d-16aaf65bf6e7">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>github</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Debian-Internet" uuid="9d2db260-22bb-4829-8903-42a644aebbfe">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>apt-get</member>
+                    <member>github</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Docker-Internet" uuid="3bc29d75-c830-4be0-b1e1-39124e4199d3">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>github</member>
+                    <member>ms-update</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="AD-Internet" uuid="c6bf37bb-354c-46b8-aae7-3853023962b1">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>github</member>
+                    <member>ms-update</member>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-http</member>
+                    <member>service-https</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="WebSrv-Internet" uuid="61c5d84a-e668-45ca-b808-aa7a8c11795c">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Ecomm-Internet" uuid="405b1ced-3846-4b53-bc9b-c0e3e6256bf5">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Splunk-Internet" uuid="390a789f-ee13-4806-8900-e34186fe2a58">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Mail-Internet" uuid="85ab954c-9591-4fa3-96d3-eab6b9a15dda">
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                    <member>github</member>
+                    <member>apt-get</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>internet</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <group-tag>internet</group-tag>
+                </entry>
+                <entry name="Bind9-Scoring" uuid="04fd0bea-492a-42cd-89ce-8ee6f85d9f58">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>scoring</group-tag>
+                </entry>
+                <entry name="AD-DNS-Scoring" uuid="db4cf888-3221-4a22-8ac5-e72e4921de5e">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Splunk-Scoring" uuid="fbee9fef-b685-4e7b-be9d-e5c3e5b328a5">
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>splunk-webui</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <group-tag>scoring</group-tag>
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Ecomm-Scoring" uuid="6e6bc8a1-a562-498f-9ced-2b10d898da05">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Ecomm-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>web-browsing</member>
+                  </application>
+                  <service>
+                    <member>service-http</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <rule-type>universal</rule-type>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Mail-Scoring" uuid="2cf30ba4-8b49-46e9-b8c6-93ddd929a4de">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Mail-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>pop3</member>
+                    <member>smtp</member>
+                  </application>
+                  <service>
+                    <member>pop3</member>
+                    <member>smtp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Scored-Ping" uuid="9c1c728f-ccb3-45d3-9523-508f08d14680">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>Public</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>ScoredPublicIPs</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>icmp</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>scoring</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>scoring</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Wkst2PA" uuid="3d0d8dfc-c0c6-47a3-9eb4-cf0a291c2cfd">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>PA-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>access-control</member>
+                    <member>wkst</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>access-control</group-tag>
+                </entry>
+                <entry name="Wkst-SSH" uuid="3f16f843-9183-431f-a2fe-928b8f41fe97">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>Public</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>wkst</member>
+                    <member>user</member>
+                    <member>internal</member>
+                    <member>public</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <rule-type>universal</rule-type>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Splunk-WebUI" uuid="ddfca3f8-7f5e-426d-a964-6bdb9742a225">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>splunk-webui</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>access-control</member>
+                    <member>splunk</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Wazuh-UI" uuid="3f3beb48-5ba9-4d17-8bee-e692a570b04c">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>service-https</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>splunk</member>
+                    <member>docker</member>
+                    <member>access-control</member>
+                    <member>wazuh</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="WebScan" uuid="5a88f52e-78ff-4b53-b90d-447db9fba497">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>Public</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>websrv</member>
+                    <member>internal</member>
+                    <member>user</member>
+                    <member>public</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <rule-type>universal</rule-type>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                  <disabled>no</disabled>
+                </entry>
+                <entry name="LDAP" uuid="ca2c32da-fc34-493d-a172-e496842ae497">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ldap</member>
+                  </application>
+                  <service>
+                    <member>ldap</member>
+                    <member>ldaps</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>access-control</member>
+                    <member>mail</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>access-control</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="PA-Updates-Security" uuid="7792c1de-7a99-4957-b71e-9e763b07d6e3">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>paloalto-dns-security</member>
+                    <member>paloalto-updates</member>
+                    <member>paloalto-wildfire-cloud</member>
+                    <member>pan-db-cloud</member>
+                  </application>
+                  <service>
+                    <member>application-default</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>functionality</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>no</log-start>
+                  <group-tag>functionality</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="AD-ExtDNS" uuid="c4ab3105-17de-4d66-b805-df2f54169d42">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>ApprovedDNS</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>dns</group-tag>
+                </entry>
+                <entry name="Debian-DNS" uuid="163428c0-c9a4-444c-857e-a4902929f607">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Docker-DNS" uuid="7eb487ed-23ea-40b6-9e43-2a4b048525a3">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>docker</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="WebSrv-DNS" uuid="3443c9cf-1586-4545-b420-746be082d262">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Wkst-DNS" uuid="8791fa2b-4b38-4cb5-8dbf-137b98572b1e">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Splunk-DNS" uuid="f15f6aff-4c34-4bec-bce6-fa825e264b46">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Ecomm-DNS" uuid="6c9bb5e8-a9fe-497e-b181-11027b6d53d2">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Mail-DNS" uuid="52f257c7-a0f5-44c7-8cc0-462788bfe85f">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>AD-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="PA-DNS" uuid="ffacbc11-9e86-40d9-afa0-c360ee18bc39">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <service>
+                    <member>dns</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>dns</member>
+                    <member>debian</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>dns</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="Debian-Logging" uuid="0f381779-abfa-4835-a43e-db71d3481db9">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Docker-Logging" uuid="903d6b33-179a-4ea7-a3a9-5fa4aa2b5c87">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>wazuh-agent</member>
+                    <member>syslog</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="WebSrv-Logging" uuid="27290cbf-4ba9-429a-9dbe-7116dcc3742f">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="AD-Logging" uuid="d90d163c-35a0-43cb-a9f3-9455598150c1">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>wazuh-agent</member>
+                    <member>syslog</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Wkst-Logging" uuid="5b819b14-6833-4cfd-8570-bc9136214bc9">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Ecomm-Logging" uuid="fe6634db-0791-4f43-a22b-3284f782ed0c">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>wazuh-agent</member>
+                    <member>syslog</member>
+                    <member>ssl</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Mail-Logging" uuid="d1c15f2c-d602-4f06-b869-1e6edb03c7bc">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ssl</member>
+                    <member>syslog</member>
+                    <member>wazuh-agent</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                    <member>Wazuh-Services</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="PA-Logging" uuid="e788bd5b-96d3-4b1a-b279-fe7adec6d4b1">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>syslog</member>
+                  </application>
+                  <service>
+                    <member>syslog</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>logging</member>
+                    <member>splunk</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>logging</group-tag>
+                </entry>
+                <entry name="Docker-NTP" uuid="b6d1f60f-bbe5-4f21-a5f6-9fba7c530089">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="DebianNTP2Ext" uuid="5ba88cb2-72b3-4f41-b506-9a05eb398770">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>GoogleNTP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <group-tag>ntp</group-tag>
+                  <log-setting>Wazuh</log-setting>
+                </entry>
+                <entry name="WebSrv-NTP" uuid="b6d307e4-8d14-472d-9316-6639aa6b5259">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="AD-NTP" uuid="62839907-7c21-47bc-bc79-1a04f5570c5e">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Wkst-NTP" uuid="8885d257-0045-4ce9-8eb1-c536070a3634">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Splunk-NTP" uuid="116123cd-e2db-4587-b1ba-8011d74aec76">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Ecomm-NTP" uuid="7f281022-6dd8-4e75-bd3d-7ee5b56bf456">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="PA-NTP" uuid="0fdf4ff3-79f0-48e9-a093-82df39de6c6b">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="Mail-NTP" uuid="150fc68b-ec08-44a3-a648-77a434430eca">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>ntp</member>
+                  </application>
+                  <service>
+                    <member>ntp</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>ntp</member>
+                    <member>debian</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>allow</action>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>ntp</group-tag>
+                </entry>
+                <entry name="DenyInternal2User" uuid="99a5e5cd-a6af-47ea-bff3-aca31f548b05">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>user</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyUser2Internal" uuid="c58f6c0c-bf5e-403b-a64b-39b7cb8df7ef">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>user</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyInternal2Public" uuid="0b70f74a-d005-45f4-a9a2-e733885ba8bb">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyPublic2Internal" uuid="884bc855-ee9f-467c-9987-3b102866511f">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>internal</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyUser2Public" uuid="82f4946c-3b2a-416b-b109-d315dc15631a">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>user</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyPublic2User" uuid="5cbe069f-53c9-4dad-a582-5265a8a34aa6">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                    <member>user</member>
+                    <member>public</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+                <entry name="DenyExternal2Docker" uuid="4b5217e9-572e-4456-ac5b-ad322af0aa1a">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Docker-IP</member>
+                    <member>Docker-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>docker</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Debian" uuid="723026e3-c956-4e9b-947d-67c1f7fbbbe8">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Internal</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Debian-IP</member>
+                    <member>Debian-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>debian</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2WebSrv" uuid="50441d4a-d937-46cc-bc9f-0006a85bb120">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>WebSrv-IP</member>
+                    <member>WebSrv-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>websrv</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2AD" uuid="b24ec442-91aa-4dad-9f02-37ff921bd5b6">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>AD-IP</member>
+                    <member>AD-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>ad</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Wkst" uuid="da3d5ff9-fdcb-4c10-a25b-cea61b89a9c9">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Wkst-IP</member>
+                    <member>Wkst-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>wkst</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2PA" uuid="d6c913f1-d6c7-484a-9070-58b2de312722">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>User</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>PA-IP</member>
+                    <member>PA-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>PA</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Splunk" uuid="ec3e24e3-cf71-4286-9c9b-916f4fee6d70">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Splunk-IP</member>
+                    <member>Splunk-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>splunk</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Ecomm" uuid="74108cae-e5c8-4011-8858-d280f82912fc">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Ecomm-IP</member>
+                    <member>Ecomm-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>ecomm</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="DenyExternal2Mail" uuid="96b62905-22ab-42fe-a9f2-d186f082d686">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>Public</member>
+                  </to>
+                  <from>
+                    <member>External</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>Mail-IP</member>
+                    <member>Mail-IP-Pub</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>externalsecurity</member>
+                    <member>mail</member>
+                  </tag>
+                  <action>drop</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>externalsecurity</group-tag>
+                </entry>
+                <entry name="any2any" uuid="c7de3172-4fd1-4785-8c95-3825b56552e4">
+                  <option>
+                    <disable-server-response-inspection>no</disable-server-response-inspection>
+                  </option>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <to>
+                    <member>any</member>
+                  </to>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <action>allow</action>
+                  <log-start>no</log-start>
+                  <log-end>yes</log-end>
+                  <negate-source>no</negate-source>
+                  <negate-destination>no</negate-destination>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                  </tag>
+                  <group-tag>zone-control</group-tag>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="DenyAny2Any" uuid="df68170a-a303-4dc2-be03-2209d9bc65d6">
+                  <profile-setting>
+                    <group>
+                      <member>strict</member>
+                    </group>
+                  </profile-setting>
+                  <to>
+                    <member>any</member>
+                  </to>
+                  <from>
+                    <member>any</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <category>
+                    <member>any</member>
+                  </category>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <source-hip>
+                    <member>any</member>
+                  </source-hip>
+                  <destination-hip>
+                    <member>any</member>
+                  </destination-hip>
+                  <tag>
+                    <member>zone-control</member>
+                  </tag>
+                  <action>reset-both</action>
+                  <icmp-unreachable>yes</icmp-unreachable>
+                  <log-start>yes</log-start>
+                  <log-setting>Wazuh</log-setting>
+                  <group-tag>zone-control</group-tag>
+                </entry>
+              </rules>
+            </security>
+            <nat>
+              <rules>
+                <entry name="PA-OUT" uuid="a617c02a-5ede-4b93-85fb-1b3bbf8aa66c">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>172.25.244.150</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>PA-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>PA</member>
+                  </tag>
+                </entry>
+                <entry name="Wkst" uuid="29685180-0ea2-4437-ae01-d3ded14055ad">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Wkst-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>Wkst-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <to-interface>ethernet1/3</to-interface>
+                </entry>
+                <entry name="Ecomm" uuid="ad9b4759-e01e-408c-8e87-3023c10141c3">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Ecomm-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Ecomm-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <disabled>no</disabled>
+                  <tag>
+                    <member>ecomm</member>
+                  </tag>
+                </entry>
+                <entry name="WebSrv" uuid="a2af06af-9b38-4f12-a1cb-597b4e23686e">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>WebSrv-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>WebSrv-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <disabled>no</disabled>
+                  <tag>
+                    <member>websrv</member>
+                  </tag>
+                </entry>
+                <entry name="Splunk" uuid="c3fbcbc3-9816-4bc5-8870-7a5cc35a3b7d">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Splunk-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Splunk-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                </entry>
+                <entry name="Mail" uuid="27773a46-80d7-460e-8327-238ae24213e1">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Mail-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Mail-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>mail</member>
+                  </tag>
+                </entry>
+                <entry name="AD" uuid="25c71eda-f958-4655-955f-b6ab7cf0e9ab">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>AD-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>AD-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>ad</member>
+                  </tag>
+                </entry>
+                <entry name="Docker" uuid="e5f063d7-399d-4dca-b00f-4e9e3c6fbe93">
+                  <source-translation>
+                    <static-ip>
+                      <translated-address>Docker-IP-Pub</translated-address>
+                      <bi-directional>yes</bi-directional>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Docker-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>docker</member>
+                  </tag>
+                </entry>
+                <entry name="Debian" uuid="869fb469-951b-48b6-97c8-eb7d5e6f637b">
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Debian-IP</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <source-translation>
+                    <static-ip>
+                      <bi-directional>yes</bi-directional>
+                      <translated-address>Debian-IP-Pub</translated-address>
+                    </static-ip>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <to-interface>ethernet1/3</to-interface>
+                  <tag>
+                    <member>debian</member>
+                  </tag>
+                </entry>
+                <entry name="User NAT" uuid="ca34f011-edcb-4b0f-8684-1ea2dfdb8a71">
+                  <source-translation>
+                    <dynamic-ip-and-port>
+                      <translated-address>
+                        <member>172.25.244.152</member>
+                      </translated-address>
+                    </dynamic-ip-and-port>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>User</member>
+                  </from>
+                  <source>
+                    <member>User-Mask</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>any</to-interface>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Public NAT" uuid="6c57b0fc-c198-4a86-a7bf-e34ca59433e3">
+                  <source-translation>
+                    <dynamic-ip-and-port>
+                      <translated-address>
+                        <member>172.25.244.151</member>
+                      </translated-address>
+                    </dynamic-ip-and-port>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Public</member>
+                  </from>
+                  <source>
+                    <member>Public-Mask</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>any</to-interface>
+                  <disabled>yes</disabled>
+                </entry>
+                <entry name="Internal NAT" uuid="9b6d7361-ca9f-40b4-895e-806cedf18f31">
+                  <source-translation>
+                    <dynamic-ip-and-port>
+                      <translated-address>
+                        <member>172.25.244.150</member>
+                      </translated-address>
+                    </dynamic-ip-and-port>
+                  </source-translation>
+                  <to>
+                    <member>External</member>
+                  </to>
+                  <from>
+                    <member>Internal</member>
+                  </from>
+                  <source>
+                    <member>Internal-Mask</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>any</service>
+                  <nat-type>ipv4</nat-type>
+                  <to-interface>any</to-interface>
+                  <disabled>yes</disabled>
+                </entry>
+              </rules>
+            </nat>
+            <application-override>
+              <rules/>
+            </application-override>
+          </rulebase>
+          <global-protect>
+            <global-protect-gateway/>
+            <global-protect-portal/>
+            <global-protect-mdm/>
+          </global-protect>
+          <import>
+            <network>
+              <interface>
+                <member>ethernet1/1</member>
+                <member>ethernet1/2</member>
+                <member>ethernet1/3</member>
+                <member>ethernet1/4</member>
+              </interface>
+            </network>
+          </import>
+          <address>
+            <entry name="User-Mask">
+              <ip-netmask>172.20.242.0/24</ip-netmask>
+              <tag>
+                <member>user</member>
+              </tag>
+            </entry>
+            <entry name="Public-Mask">
+              <ip-netmask>172.20.241.0/24</ip-netmask>
+              <tag>
+                <member>public</member>
+              </tag>
+            </entry>
+            <entry name="Internal-Mask">
+              <ip-netmask>172.20.240.0/24</ip-netmask>
+              <tag>
+                <member>internal</member>
+              </tag>
+            </entry>
+            <entry name="AD-IP">
+              <ip-netmask>172.20.242.200</ip-netmask>
+              <tag>
+                <member>ad</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="AD-IP-Pub">
+              <ip-netmask>172.25.244.27</ip-netmask>
+              <tag>
+                <member>ad</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Debian-IP">
+              <ip-netmask>172.20.240.20</ip-netmask>
+              <tag>
+                <member>private-ip</member>
+                <member>debian</member>
+              </tag>
+            </entry>
+            <entry name="Debian-IP-Pub">
+              <ip-netmask>172.25.244.20</ip-netmask>
+              <tag>
+                <member>debian</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Docker-IP">
+              <ip-netmask>172.20.240.10</ip-netmask>
+              <tag>
+                <member>docker</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Docker-IP-Pub">
+              <ip-netmask>172.25.244.97</ip-netmask>
+              <tag>
+                <member>docker</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Ecomm-IP">
+              <ip-netmask>172.20.241.30</ip-netmask>
+              <tag>
+                <member>ecomm</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Ecomm-IP-Pub">
+              <ip-netmask>172.25.244.11</ip-netmask>
+              <tag>
+                <member>ecomm</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Mail-IP">
+              <ip-netmask>172.20.241.40</ip-netmask>
+              <tag>
+                <member>mail</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Mail-IP-Pub">
+              <ip-netmask>172.25.244.39</ip-netmask>
+              <tag>
+                <member>mail</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="PA-IP">
+              <ip-netmask>172.20.242.150</ip-netmask>
+              <tag>
+                <member>PA</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="PA-IP-Pub">
+              <ip-netmask>172.25.244.150</ip-netmask>
+              <tag>
+                <member>PA</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="Splunk-IP">
+              <ip-netmask>172.20.241.20</ip-netmask>
+              <tag>
+                <member>splunk</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Splunk-IP-Pub">
+              <ip-netmask>172.25.244.9</ip-netmask>
+              <tag>
+                <member>splunk</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="WebSrv-IP">
+              <ip-netmask>172.20.242.10</ip-netmask>
+              <tag>
+                <member>private-ip</member>
+                <member>websrv</member>
+              </tag>
+            </entry>
+            <entry name="WebSrv-IP-Pub">
+              <ip-netmask>172.25.244.23</ip-netmask>
+              <tag>
+                <member>public-ip</member>
+                <member>websrv</member>
+              </tag>
+            </entry>
+            <entry name="Wkst-IP">
+              <ip-netmask>172.20.242.30</ip-netmask>
+              <tag>
+                <member>wkst</member>
+                <member>private-ip</member>
+              </tag>
+            </entry>
+            <entry name="Wkst-IP-Pub">
+              <ip-netmask>172.25.244.30</ip-netmask>
+              <tag>
+                <member>wkst</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+            <entry name="GoogleDNS">
+              <ip-netmask>8.8.8.8</ip-netmask>
+            </entry>
+            <entry name="GoogleDNS2">
+              <ip-netmask>8.8.4.4</ip-netmask>
+            </entry>
+            <entry name="CloudflareDNS">
+              <ip-netmask>1.1.1.1</ip-netmask>
+            </entry>
+            <entry name="GoogleNTP">
+              <ip-netmask>216.239.35.4</ip-netmask>
+            </entry>
+          </address>
+          <profiles>
+            <hip-objects/>
+            <data-objects/>
+            <hip-profiles/>
+            <custom-url-category/>
+            <virus>
+              <entry name="strict">
+                <decoder>
+                  <entry name="ftp">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="http">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="http2">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="imap">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="pop3">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="smb">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                  <entry name="smtp">
+                    <action>default</action>
+                    <wildfire-action>default</wildfire-action>
+                    <mlav-action>default</mlav-action>
+                  </entry>
+                </decoder>
+                <packet-capture>yes</packet-capture>
+                <mlav-engine-filebased-enabled>
+                  <entry name="Windows Executables">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="PowerShell Script 1">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="PowerShell Script 2">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="Executable Linked Format">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="MSOffice">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                  <entry name="Shell">
+                    <mlav-policy-action>enable</mlav-policy-action>
+                  </entry>
+                </mlav-engine-filebased-enabled>
+              </entry>
+            </virus>
+            <spyware>
+              <entry name="stricter">
+                <rules>
+                  <entry name="simple-critical">
+                    <action>
+                      <block-ip>
+                        <track-by>source</track-by>
+                        <duration>3600</duration>
+                      </block-ip>
+                    </action>
+                    <severity>
+                      <member>critical</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-high">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <severity>
+                      <member>high</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-medium">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <severity>
+                      <member>medium</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-low">
+                    <action>
+                      <default/>
+                    </action>
+                    <severity>
+                      <member>low</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-informational">
+                    <action>
+                      <default/>
+                    </action>
+                    <severity>
+                      <member>informational</member>
+                    </severity>
+                    <threat-name>any</threat-name>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                </rules>
+                <botnet-domains>
+                  <lists>
+                    <entry name="default-paloalto-dns">
+                      <action>
+                        <sinkhole/>
+                      </action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                  </lists>
+                  <dns-security-categories>
+                    <entry name="pan-dns-sec-adtracking">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-cc">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-ddns">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-grayware">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-malware">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-parked">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-phishing">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-proxy">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>extended-capture</packet-capture>
+                    </entry>
+                    <entry name="pan-dns-sec-recent">
+                      <log-level>default</log-level>
+                      <action>default</action>
+                      <packet-capture>disable</packet-capture>
+                    </entry>
+                  </dns-security-categories>
+                  <sinkhole>
+                    <ipv4-address>pan-sinkhole-default-ip</ipv4-address>
+                    <ipv6-address>::1</ipv6-address>
+                  </sinkhole>
+                  <rtype-action>
+                    <svcb>allow</svcb>
+                  </rtype-action>
+                </botnet-domains>
+                <cloud-inline-analysis>yes</cloud-inline-analysis>
+                <mica-engine-spyware-enabled>
+                  <entry name="HTTP Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="HTTP2 Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="SSL Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="Unknown-TCP Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="Unknown-UDP Command and Control detector">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                </mica-engine-spyware-enabled>
+              </entry>
+            </spyware>
+            <vulnerability>
+              <entry name="stricter">
+                <rules>
+                  <entry name="simple-client-critical">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>critical</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-client-high">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>high</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-client-medium">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>medium</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-client-informational">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>informational</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-client-low">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>low</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>client</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-server-critical">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>critical</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-server-high">
+                    <action>
+                      <block-ip>
+                        <duration>3600</duration>
+                        <track-by>source</track-by>
+                      </block-ip>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>high</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>extended-capture</packet-capture>
+                  </entry>
+                  <entry name="simple-server-medium">
+                    <action>
+                      <reset-both/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>medium</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-server-informational">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>informational</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                  <entry name="simple-server-low">
+                    <action>
+                      <default/>
+                    </action>
+                    <vendor-id>
+                      <member>any</member>
+                    </vendor-id>
+                    <severity>
+                      <member>low</member>
+                    </severity>
+                    <cve>
+                      <member>any</member>
+                    </cve>
+                    <threat-name>any</threat-name>
+                    <host>server</host>
+                    <category>any</category>
+                    <packet-capture>single-packet</packet-capture>
+                  </entry>
+                </rules>
+                <cloud-inline-analysis>yes</cloud-inline-analysis>
+                <mica-engine-vulnerability-enabled>
+                  <entry name="SQL Injection">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                  <entry name="Command Injection">
+                    <inline-policy-action>reset-both</inline-policy-action>
+                  </entry>
+                </mica-engine-vulnerability-enabled>
+              </entry>
+            </vulnerability>
+            <url-filtering>
+              <entry name="strict">
+                <local-inline-cat>yes</local-inline-cat>
+                <credential-enforcement>
+                  <mode>
+                    <disabled/>
+                  </mode>
+                  <log-severity>medium</log-severity>
+                  <alert>
+                    <member>low-risk</member>
+                    <member>medium-risk</member>
+                    <member>shareware-and-freeware</member>
+                  </alert>
+                  <block>
+                    <member>abused-drugs</member>
+                    <member>adult</member>
+                    <member>command-and-control</member>
+                    <member>compromised-website</member>
+                    <member>gambling</member>
+                    <member>grayware</member>
+                    <member>hacking</member>
+                    <member>high-risk</member>
+                    <member>malware</member>
+                    <member>newly-registered-domain</member>
+                    <member>peer-to-peer</member>
+                    <member>phishing</member>
+                    <member>proxy-avoidance-and-anonymizers</member>
+                    <member>questionable</member>
+                    <member>ransomware</member>
+                    <member>remote-access</member>
+                    <member>scanning-activity</member>
+                    <member>unknown</member>
+                    <member>weapons</member>
+                  </block>
+                </credential-enforcement>
+                <safe-search-enforcement>no</safe-search-enforcement>
+                <log-http-hdr-xff>yes</log-http-hdr-xff>
+                <log-http-hdr-user-agent>yes</log-http-hdr-user-agent>
+                <log-http-hdr-referer>yes</log-http-hdr-referer>
+                <cloud-inline-cat>yes</cloud-inline-cat>
+                <alert>
+                  <member>AI-code-assistant</member>
+                  <member>AI-conversational-assistant</member>
+                  <member>AI-data-and-workflow-optimizer</member>
+                  <member>AI-media-service</member>
+                  <member>AI-meeting-assistant</member>
+                  <member>AI-platform-service</member>
+                  <member>AI-website-generator</member>
+                  <member>AI-writing-assistant</member>
+                  <member>artificial-intelligence</member>
+                  <member>cryptocurrency</member>
+                  <member>low-risk</member>
+                  <member>medium-risk</member>
+                  <member>real-time-detection</member>
+                  <member>shareware-and-freeware</member>
+                </alert>
+                <block>
+                  <member>abused-drugs</member>
+                  <member>adult</member>
+                  <member>command-and-control</member>
+                  <member>compromised-website</member>
+                  <member>gambling</member>
+                  <member>grayware</member>
+                  <member>hacking</member>
+                  <member>high-risk</member>
+                  <member>malware</member>
+                  <member>newly-registered-domain</member>
+                  <member>peer-to-peer</member>
+                  <member>phishing</member>
+                  <member>proxy-avoidance-and-anonymizers</member>
+                  <member>questionable</member>
+                  <member>ransomware</member>
+                  <member>remote-access</member>
+                  <member>scanning-activity</member>
+                  <member>unknown</member>
+                  <member>weapons</member>
+                </block>
+              </entry>
+            </url-filtering>
+            <file-blocking>
+              <entry name="stricter file blocking">
+                <rules>
+                  <entry name="Block all risky file types">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>7z</member>
+                      <member>bat</member>
+                      <member>cab</member>
+                      <member>chm</member>
+                      <member>class</member>
+                      <member>cpl</member>
+                      <member>dll</member>
+                      <member>exe</member>
+                      <member>flash</member>
+                      <member>hlp</member>
+                      <member>hta</member>
+                      <member>jar</member>
+                      <member>msi</member>
+                      <member>Multi-Level-Encoding</member>
+                      <member>ocx</member>
+                      <member>PE</member>
+                      <member>pif</member>
+                      <member>rar</member>
+                      <member>scr</member>
+                      <member>tar</member>
+                      <member>torrent</member>
+                      <member>vbe</member>
+                      <member>wsf</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <action>block</action>
+                  </entry>
+                  <entry name="Block encrypted files">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>encrypted-rar</member>
+                      <member>encrypted-zip</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <action>block</action>
+                  </entry>
+                  <entry name="Log all other file types">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>any</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <action>alert</action>
+                  </entry>
+                </rules>
+              </entry>
+            </file-blocking>
+            <wildfire-analysis>
+              <entry name="strict">
+                <rules>
+                  <entry name="default">
+                    <application>
+                      <member>any</member>
+                    </application>
+                    <file-type>
+                      <member>any</member>
+                    </file-type>
+                    <direction>both</direction>
+                    <analysis>public-cloud</analysis>
+                  </entry>
+                </rules>
+              </entry>
+            </wildfire-analysis>
+            <dos-protection>
+              <entry name="strict">
+                <flood>
+                  <tcp-syn>
+                    <red>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                      <maximal-rate>40000</maximal-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </tcp-syn>
+                  <udp>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </udp>
+                  <icmp>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </icmp>
+                  <icmpv6>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </icmpv6>
+                  <other-ip>
+                    <red>
+                      <maximal-rate>40000</maximal-rate>
+                      <alarm-rate>10000</alarm-rate>
+                      <activate-rate>10000</activate-rate>
+                    </red>
+                    <enable>yes</enable>
+                  </other-ip>
+                </flood>
+                <resource>
+                  <sessions>
+                    <enabled>no</enabled>
+                  </sessions>
+                </resource>
+                <type>aggregate</type>
+              </entry>
+            </dos-protection>
+          </profiles>
+          <application-filter/>
+          <threats>
+            <vulnerability/>
+          </threats>
+          <user-id-collector>
+            <setting/>
+          </user-id-collector>
+          <tag>
+            <entry name="internal"/>
+            <entry name="public"/>
+            <entry name="user"/>
+            <entry name="ad"/>
+            <entry name="public-ip"/>
+            <entry name="private-ip"/>
+            <entry name="debian"/>
+            <entry name="docker"/>
+            <entry name="ecomm"/>
+            <entry name="mail"/>
+            <entry name="PA"/>
+            <entry name="splunk"/>
+            <entry name="websrv"/>
+            <entry name="wkst"/>
+            <entry name="internet"/>
+            <entry name="scoring"/>
+            <entry name="access-control"/>
+            <entry name="dns"/>
+            <entry name="logging"/>
+            <entry name="ntp"/>
+            <entry name="zone-control"/>
+            <entry name="functionality"/>
+            <entry name="externalsecurity"/>
+            <entry name="wazuh"/>
+          </tag>
+          <address-group>
+            <entry name="User-IP-Group">
+              <static>
+                <member>AD-IP</member>
+                <member>PA-IP</member>
+                <member>WebSrv-IP</member>
+                <member>Wkst-IP</member>
+              </static>
+              <tag>
+                <member>user</member>
+              </tag>
+            </entry>
+            <entry name="Public-IP-Group">
+              <static>
+                <member>Ecomm-IP</member>
+                <member>Mail-IP</member>
+                <member>Splunk-IP</member>
+              </static>
+              <tag>
+                <member>public</member>
+              </tag>
+            </entry>
+            <entry name="Internal-IP-Group">
+              <static>
+                <member>Debian-IP</member>
+                <member>Docker-IP</member>
+              </static>
+              <tag>
+                <member>internal</member>
+              </tag>
+            </entry>
+            <entry name="ApprovedDNS">
+              <static>
+                <member>CloudflareDNS</member>
+                <member>GoogleDNS</member>
+                <member>GoogleDNS2</member>
+              </static>
+            </entry>
+            <entry name="ScoredPublicIPs">
+              <static>
+                <member>AD-IP-Pub</member>
+                <member>Debian-IP-Pub</member>
+                <member>Ecomm-IP-Pub</member>
+                <member>Mail-IP-Pub</member>
+                <member>Splunk-IP-Pub</member>
+              </static>
+              <tag>
+                <member>scoring</member>
+                <member>public-ip</member>
+              </tag>
+            </entry>
+          </address-group>
+          <log-settings>
+            <profiles>
+              <entry name="Wazuh">
+                <match-list>
+                  <entry name="Wazuh-Traffic">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>traffic</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Threat">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>threat</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Auth">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>auth</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-URL">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>url</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Data">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>data</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Decrypt">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>decryption</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                  <entry name="Wazuh-Tunnel">
+                    <send-syslog>
+                      <member>Wazuh-Logging</member>
+                    </send-syslog>
+                    <log-type>tunnel</log-type>
+                    <filter>All Logs</filter>
+                    <send-to-panorama>yes</send-to-panorama>
+                    <quarantine>no</quarantine>
+                  </entry>
+                </match-list>
+              </entry>
+            </profiles>
+          </log-settings>
+          <profile-group>
+            <entry name="strict">
+              <virus>
+                <member>strict</member>
+              </virus>
+              <spyware>
+                <member>stricter</member>
+              </spyware>
+              <vulnerability>
+                <member>stricter</member>
+              </vulnerability>
+              <url-filtering>
+                <member>strict</member>
+              </url-filtering>
+              <file-blocking>
+                <member>stricter file blocking</member>
+              </file-blocking>
+              <wildfire-analysis>
+                <member>strict</member>
+              </wildfire-analysis>
+            </entry>
+          </profile-group>
+        </entry>
+      </vsys>
+    </entry>
+  </devices>
+</config>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
