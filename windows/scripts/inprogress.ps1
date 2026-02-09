@@ -1,5 +1,22 @@
 # Inprogress PowerShell Script
+<#
+What this program does:
+1. Creates `ccdcadmin` account
+2. Changes password of `ccdcadmin` depending on what machine the script is running on
+3. Changes account security policies
+4. Sets a login banner
+5. Disables default Guest and Administrator account | NEW: Disables UserOne account on Win11 Wkst
+6. Sets a random password for default accounts every run
+7. Enables firewalls
+8. Disables legacy services
+9. Sets UAC to maximum
+10. Installs and Deploys Wazuh Agent | Sets Manager IP to Splunk IP
+11. Downloads and configures ClamAV
+12. Downloads and runs DeepBlueCLI
+13. Creates System Inventory Report
+14. Creates scheduled tasks to automatically run Audit.ps1, ClamAV.ps1 (REMOVED), DeepBlueCLIScan.ps1
 
+#>
 
 # Logs are created at "C:\Logs"
 
@@ -299,7 +316,7 @@ try {
 }
 
 # Disable Default Accounts
-$AccountsToDisable = @("Administrator","Guest")
+$AccountsToDisable = @("Administrator","Guest","UserOne")
 
 foreach ($Account in $AccountsToDisable) {
     try {
@@ -507,6 +524,7 @@ if ($DomainJoined) {
     Write-Status "Skipping Wazuh Deployment. Not Domain Joined" "Warning"
 }
 
+<#
 # ----
 # Install VC++ if uninstalled for ClamAV/FreshClam
 # ----
@@ -537,6 +555,7 @@ if ($DomainJoined){
 } else {
     Write-Status "Skipping check for C++ redist. Not Domain Joined" "Warning"
 }
+#>
 
 # ----
 # ClamAV Installation and Setup
@@ -805,7 +824,7 @@ $Domain = $env:USERDNSDOMAIN
 $SysvolScriptRoot = "\\$Domain\SYSVOL\$Domain\Scripts"
 
 $ScheduledTasks = @(
-    @{
+<#    @{
         TaskName   = "ClamAV Scan"
         Script     = "$SysvolScriptRoot\ClamAV.ps1"
         Interval   = 30
@@ -814,7 +833,7 @@ $ScheduledTasks = @(
             MultipleInstances = 'IgnoreNew'
             ExecutionTimeLimit = (New-TimeSpan -Hours 1)
         }
-    },
+    }, #>
     @{
         TaskName   = "DeepBlueCLI Scan"
         Script     = "$SysvolScriptRoot\DeepBlueCLIScan.ps1"
