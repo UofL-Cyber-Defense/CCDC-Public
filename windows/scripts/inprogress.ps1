@@ -556,7 +556,7 @@ if ($DomainJoined){
     Write-Status "Skipping check for C++ redist. Not Domain Joined" "Warning"
 }
 #>
-
+$VCRedistInstalled = $true
 # ----
 # ClamAV Installation and Setup
 # ----
