@@ -562,7 +562,7 @@ $VCRedistInstalled = $true
 # ----
 if ($DomainJoined){
     if ($VCRedistInstalled){
-        $InstallerPath = "$Sysvol\Software\clamav-1.5.1.win.x64.msi"
+        $InstallerPath = "C:\clamav-1.5.1.win.x64.msi"
         $FreshClamPath = "C:\Program Files\ClamAV\freshclam.exe"
         $FreshClamConfig = "C:\Program Files\ClamAV\freshclam.conf"
         $ClamDConfig = "C:\Program Files\ClamAV\clamd.conf"
