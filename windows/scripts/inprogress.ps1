@@ -560,11 +560,14 @@ $VCRedistInstalled = $true
 # ----
 # ClamAV Installation and Setup
 # ----
-if ($VCRedistInstalled){
-    $InstallerPath = "C:\clamav-1.5.1.win.x64.msi"
-    $FreshClamPath = "C:\Program Files\ClamAV\freshclam.exe"
+Write-Status "VCRedistInstalled = $VCRedistInstalled" "Info"
+
+if ($VCRedistInstalled) {
+
+    $InstallerPath   = "C:\clamav-1.5.1.win.x64.msi"
+    $FreshClamPath   = "C:\Program Files\ClamAV\freshclam.exe"
     $FreshClamConfig = "C:\Program Files\ClamAV\freshclam.conf"
-    $ClamDConfig = "C:\Program Files\ClamAV\clamd.conf"
+    $ClamDConfig     = "C:\Program Files\ClamAV\clamd.conf"
 
     # ---- Install ClamAV ----
     if (-not (Test-Path $FreshClamPath)) {
@@ -576,20 +579,24 @@ if ($VCRedistInstalled){
                 $ClamAVUrl = "https://www.clamav.net/downloads/production/clamav-1.5.1.win.x64.msi"
                 Invoke-WebRequest -Uri $ClamAVUrl -OutFile $InstallerPath -UseBasicParsing
                 Write-Status "ClamAV installer downloaded successfully." "Success"
-        } catch {
-            Write-Status "Failed to download ClamAV installer: $_" "Error"
-            return
+            }
+            catch {
+                Write-Status "Failed to download ClamAV installer: $_" "Error"
+                return
+            }
         }
 
         $InstallArgs = "/i `"$InstallerPath`" /qn"
         try {
             $InstallProc = Start-Process -FilePath "msiexec.exe" -ArgumentList $InstallArgs -Wait -PassThru
             Write-Status "ClamAV installed successfully." "Success"
-        } catch {
+        }
+        catch {
             Write-Status "ClamAV installation failed: $_" "Error"
             return
         }
-    } else {
+    }
+    else {
         Write-Status "ClamAV already installed. Skipping installation." "Info"
     }
 
@@ -597,15 +604,18 @@ if ($VCRedistInstalled){
     if (-not (Test-Path $FreshClamConfig)) {
         Write-Status "freshclam.conf not found. Creating from sample." "Info"
         Copy-Item "C:\Program Files\ClamAV\conf_examples\freshclam.conf.sample" $FreshClamConfig -Force
+
         $fileContent = Get-Content $FreshClamConfig
         $fileContent = $fileContent | ForEach-Object {
             if ($_ -match "Example") { $null }
             elseif ($_ -match "^#\s*UpdateLogFile") { $_ -replace "^#\s*", "" }
             else { $_ }
         }
+
         $fileContent | Set-Content $FreshClamConfig
         Write-Status "freshclam.conf configured." "Success"
-    } else {
+    }
+    else {
         Write-Status "freshclam.conf already exists. Skipping configuration." "Info"
     }
 
@@ -622,11 +632,14 @@ if ($VCRedistInstalled){
             elseif ($_ -match "^#ExtendedDetectionInfo") { $_ -replace "^#ExtendedDetectionInfo", "ExtendedDetectionInfo" }
             elseif ($_ -match "^#DetectPUA") { $_ -replace "^#DetectPUA", "DetectPUA" }
             elseif ($_ -match "^#HeuristicAlerts") { $_ -replace "^#HeuristicAlerts", "HeuristicAlerts" }
+            elseif ($_ -match "^#?MaxThreads") { "MaxThreads 2" }
             else { $_ }
         }
+
         $fileContent | Set-Content $ClamDConfig
         Write-Status "clamd.conf configured." "Success"
-    } else {
+    }
+    else {
         Write-Status "clamd.conf already exists. Skipping configuration." "Info"
     }
 
@@ -636,16 +649,18 @@ if ($VCRedistInstalled){
         try {
             New-Item -Path $FreshClamLog -ItemType File -Force | Out-Null
             Write-Status "FreshClam log file created at $FreshClamLog" "Success"
-        } catch {
+        }
+        catch {
             Write-Status "Failed to create FreshClam log file: $_" "Error"
         }
-    } else {
+    }
+    else {
         Write-Status "FreshClam log file already exists." "Info"
     }
-    
+
     # ---- Ensure ClamAV Certificate Installed ----
     $CertPath = "C:\Program Files\ClamAV\certs\clamav.crt"
-    if (Test-Path($CertPath)){
+    if (Test-Path $CertPath) {
         $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
         $Cert.Import($CertPath)
 
@@ -657,22 +672,26 @@ if ($VCRedistInstalled){
 
         Write-Host "clamav.crt has been added to the Trusted Root store" -ForegroundColor Green
     }
+
     # ---- Run FreshClam ----
-    if (Test-Path($FreshClamPath)) {
+    if (Test-Path $FreshClamPath) {
         Write-Status "Running freshclam.exe to update virus definitions..." "Info"
         try {
             Start-Process -FilePath $FreshClamPath -ArgumentList "--quiet" -Wait
             Write-Status "FreshClam update completed successfully." "Success"
-        } catch {
+        }
+        catch {
             Write-Status "FreshClam failed to update virus database: $_" "Error"
         }
-    } else {
+    }
+    else {
         Write-Status "FreshClam executable not found. Cannot update virus database." "Error"
     }
+
     Write-Status "Go to FreshClam.log to ensure no errors" "Warning"
-    } else {
-        Write-Status "Skipping ClamAV Deployment. Visual C++ Redistributables not installed" "Warning"
-    }
+}
+else {
+    Write-Status "Skipping ClamAV Deployment. Visual C++ Redistributables not installed" "Warning"
 }
 
 # ----
