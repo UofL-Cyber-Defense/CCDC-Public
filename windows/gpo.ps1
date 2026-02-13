@@ -21,39 +21,46 @@ $SysVol        = "\\$Domain\SYSVOL\$Domain"
 Write-Host "Current domain detected: $Domain"
 
 # ----
-# Copy Software and Scripts folders recursively
+# Copy Software and Scripts folders
 # ----
 $SoftwareSource = Join-Path $PSScriptRoot "Software"
-$SoftwareDest = Join-Path $SysVol "Software"
+$SoftwareDest   = Join-Path $SysVol "Software"
 
 if (Test-Path $SoftwareSource) {
-    Write-Host "Copying software to SYSVOL..."
+    Write-Host "Copying Software to SYSVOL..."
+
     Copy-Item -Path $SoftwareSource -Destination $SoftwareDest -Recurse -Force
+
     if (Test-Path $SoftwareDest) {
         Write-Host "Software copied successfully."
     } else {
-        Write-Host "Destination folder $SoftwareDest doesn't exist. Check manually that it exists."
+        Write-Host "Destination folder '$SoftwareDest' does not exist. Check manually."
     }
-} else {
-    Write-Host "Source folder 'Software' does not exist. Skipping"
+}
+else {
+    Write-Host "Source folder 'Software' does not exist. Skipping."
 }
 
 $ScriptsSource = Join-Path $PSScriptRoot "scripts"
-$ScriptsDest = Join-Path $SysVol "scripts"
-# In Development
-if (Test-Path $ScriptsSource) {
-    Write-Host "Copy contents of 'scripts' into $ScriptsDest"
-    if (-not(Test-Path $ScriptsDest){
-        Write-Host "'scripts' doesn't exist. Creating Directory..."
-        
-        Copy-Item -Path (Join-Path $scriptsSource '*') -Destination $scriptsDest -Recurse -Force
+$ScriptsDest   = Join-Path $SysVol "scripts"
 
-    Write-Host "Scripts copied successfully."
-} else {
-    Write-Host "Source folder 'scripts' does not exist. Skipping."
-}
+if (Test-Path $ScriptsSource) {
+    Write-Host "Copying scripts to SYSVOL..."
+    if (-not (Test-Path $ScriptsDest)) {
+        Write-Host "Destination folder '$ScriptsDest' does not exist. Creating it..."
+        New-Item -ItemType Directory -Path $ScriptsDest -Force | Out-Null
+    }
+    Copy-Item -Path (Join-Path $ScriptsSource '*') -Destination $ScriptsDest -Recurse -Force
+    if (Test-Path $ScriptsDest) {
+        Write-Host "Scripts copied successfully."
+    } else {
+        Write-Host "Destination folder '$ScriptsDest' does not exist after copy. Check manually."
     }
 }
+else {
+    Write-Host "Source folder 'scripts' does not exist. Skipping."
+}
+
 
 # ----
 # Create or get GPO
