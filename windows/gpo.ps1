@@ -61,6 +61,20 @@ else {
     Write-Host "Source folder 'scripts' does not exist. Skipping."
 }
 
+$FirewallSource = Join-Path $PSScriptRoot "ExportingOohlala.wfw"
+$FirewallDest = Join-Path $SysVol "ExportingOohlala.wfw"
+
+if (Test-Path $FirewallSource){
+    Write-Host "Copying firewall config 'ExportingOohlala.wfw' to SYSVOL root..."
+    Copy-Item -Path $FirewallSource -Destination $FirewallDest -Force
+    if (Test-Path $FirewallDest) {
+        Write-Host "Firewall config copied successfully: $FirewallDest"
+    } else {
+        Write-Host "Copy attempted, but destination file not found: $FirewallDest"
+    }
+} else {
+    Write-Host "Firewall config not found at: $FirewallSource. Skipping"
+}
 
 # ----
 # Create or get GPO
