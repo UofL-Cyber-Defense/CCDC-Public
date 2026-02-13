@@ -23,18 +23,35 @@ Write-Host "Current domain detected: $Domain"
 # ----
 # Copy Software and Scripts folders recursively
 # ----
-$SourceFolders = @("Software","scripts")
+$SoftwareSource = Join-Path $PSScriptRoot "Software"
+$SoftwareDest = Join-Path $SysVol "Software"
 
-foreach ($Folder in $SourceFolders) {
-    $SourcePath = Join-Path $PSScriptRoot $Folder
-    $DestinationPath = Join-Path $SysVol $Folder
-
-    if (Test-Path $SourcePath) {
-        Write-Host "Copying '$Folder' to SYSVOL..."
-        Copy-Item -Path $SourcePath -Destination $DestinationPath -Recurse -Force
-        Write-Host "'$Folder' copied successfully."
+if (Test-Path $SoftwareSource) {
+    Write-Host "Copying software to SYSVOL..."
+    Copy-Item -Path $SoftwareSource -Destination $SoftwareDest -Recurse -Force
+    if (Test-Path $SoftwareDest) {
+        Write-Host "Software copied successfully."
     } else {
-        Write-Host "Source folder '$Folder' does not exist. Skipping."
+        Write-Host "Destination folder $SoftwareDest doesn't exist. Check manually that it exists."
+    }
+} else {
+    Write-Host "Source folder 'Software' does not exist. Skipping"
+}
+
+$ScriptsSource = Join-Path $PSScriptRoot "scripts"
+$ScriptsDest = Join-Path $SysVol "scripts"
+# In Development
+if (Test-Path $ScriptsSource) {
+    Write-Host "Copy contents of 'scripts' into $ScriptsDest"
+    if (-not(Test-Path $ScriptsDest){
+        Write-Host "'scripts' doesn't exist. Creating Directory..."
+        
+        Copy-Item -Path (Join-Path $scriptsSource '*') -Destination $scriptsDest -Recurse -Force
+
+    Write-Host "Scripts copied successfully."
+} else {
+    Write-Host "Source folder 'scripts' does not exist. Skipping."
+}
     }
 }
 
