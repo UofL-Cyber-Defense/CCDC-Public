@@ -51,7 +51,8 @@ $ExcludeDirs = @(
     "C:\Windows\SoftwareDistribution\Download",
     "C:\Logs",
     "C:\Users\All Users",
-    "C:\Tools"
+    "C:\Tools",
+    "C:\Program Files\ClamAV"
 )
 
 # =========================
