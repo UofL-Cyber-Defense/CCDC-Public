@@ -700,7 +700,7 @@ else {
 $DeepBlueDir = "C:\Tools\DeepBlueCLI"
 
 if (-not (Test-Path $DeepBlueDir)) {
-    Write-Status "DeepBlueCLI not found. Downloading..." "WARN"
+    Write-Status "DeepBlueCLI not found. Downloading..." "Warning"
     New-Item -ItemType Directory -Path $DeepBlueDir -Force | Out-Null
 
     Invoke-WebRequest `
@@ -721,7 +721,7 @@ $RegexFile   = "$DeepBlueDir\regexes.txt"
 $SafelistFile = "$DeepBlueDir\safelist.txt"
 
 if (-not (Test-Path $RegexFile)) {
-    Write-Status "Downloading regexes.txt" "WARN"
+    Write-Status "Downloading regexes.txt" "Warning"
     Invoke-WebRequest `
         -Uri "https://raw.githubusercontent.com/sans-blue-team/DeepBlueCLI/master/regexes.txt" `
         -OutFile $RegexFile `
@@ -729,7 +729,7 @@ if (-not (Test-Path $RegexFile)) {
 }
 
 if (-not (Test-Path $SafelistFile)) {
-    Write-Status "Downloading safelist.txt" "WARN"
+    Write-Status "Downloading safelist.txt" "Warning"
     Invoke-WebRequest `
         -Uri "https://raw.githubusercontent.com/sans-blue-team/DeepBlueCLI/master/safelist.txt" `
         -OutFile $SafelistFile `
@@ -743,11 +743,11 @@ try {
     powershell.exe -NoProfile -ExecutionPolicy Bypass `
         -Command "Set-Location '$DeepBlueDir'; .\DeepBlue.ps1 -Log Security -OutFile '$LogFile' -OutputFormat Text"
 
-    Write-Status "DeepBlueCLI analysis completed successfully" "SUCCESS"
+    Write-Status "DeepBlueCLI analysis completed successfully" "Success"
     Write-Status "Results saved to $LogFile"
 }
 catch {
-    Write-Status "DeepBlueCLI execution failed: $_" "ERROR"
+    Write-Status "DeepBlueCLI execution failed: $_" "Error"
 }
 
 # ----
