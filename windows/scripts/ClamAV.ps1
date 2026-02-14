@@ -52,7 +52,8 @@ $ExcludeDirs = @(
     "C:\Logs",
     "C:\Users\All Users",
     "C:\Tools",
-    "C:\Program Files\ClamAV"
+    "C:\Program Files\ClamAV",
+    "C:\Program Files (x86)\ossec-agent"
 )
 
 # =========================
@@ -142,6 +143,7 @@ function Start-ClamScanChunkJob {
 
 # =========================
 # Build Scan Targets (C:\ only, chunked to reduce RAM spikes)
+# High-value targets are scanned FIRST
 # =========================
 if (-not (Test-Path $ClamScanPath)) {
     Write-Status "clamscan.exe not found at: $ClamScanPath" "Error"
@@ -152,24 +154,18 @@ if (-not (Test-Path $ClamScanPath)) {
 Remove-Item $FullScanResults -ErrorAction SilentlyContinue
 Remove-Item $DetectionResults -ErrorAction SilentlyContinue
 
-$ScanTargets = New-Object System.Collections.Generic.List[string]
-
-# High-value directories
+# High-value directories (first)
 $HighValue = @(
-    "C:\Users",
+    "C:\Windows",
     "C:\ProgramData",
-    "C:\Windows\System32",
-    "C:\Windows\Temp",
+    "C:\Users",
     "C:\inetpub"
-)
+) | Where-Object { Test-Path $_ }
 
-foreach ($hv in $HighValue) {
-    if (Test-Path $hv) { $ScanTargets.Add($hv) | Out-Null }
-}
-
-# Add 2nd-level chunks under big roots
+# Chunk roots (second)
 $ChunkRoots = @("C:\Windows", "C:\Program Files", "C:\Program Files (x86)", "C:\Users", "C:\ProgramData")
 
+$ChunkTargets = New-Object System.Collections.Generic.List[string]
 foreach ($root in $ChunkRoots) {
     if (-not (Test-Path $root)) { continue }
     if ($ExcludeDirs -icontains $root) { continue }
@@ -178,25 +174,32 @@ foreach ($root in $ChunkRoots) {
     ForEach-Object {
         $p = $_.FullName
 
-        # Skip excluded paths
         $excluded = $false
         foreach ($ex in $ExcludeDirs) {
             if ($p -like "$ex*") { $excluded = $true; break }
         }
 
         if (-not $excluded) {
-            $ScanTargets.Add($p) | Out-Null
+            $ChunkTargets.Add($p) | Out-Null
         }
     }
 }
 
-# De-dup and final exclude filter
-$ScanTargets = $ScanTargets | Sort-Object -Unique | Where-Object {
+# Final ordered target list:
+#  1) HighValue (in the exact order you listed)
+#  2) ChunkTargets (alphabetical, de-duped, and excluding anything already in HighValue)
+$ScanTargets =
+    @($HighValue) +
+    @($ChunkTargets | Sort-Object -Unique | Where-Object { $HighValue -notcontains $_ })
+
+# Final exclude filter (belt & suspenders)
+$ScanTargets = $ScanTargets | Where-Object {
     $p = $_
     -not ($ExcludeDirs | Where-Object { $p -like "$_*" })
 }
 
-Write-Status "Final scan targets (C:\ only): $($ScanTargets.Count) chunk(s)" "Info"
+Write-Status "Final scan targets (C:\ only): $($ScanTargets.Count) target(s)" "Info"
+Write-Status "Order: High-value targets first, then chunked subdirectories." "Info"
 Write-Status "CPU: $MaxCoresToUse core(s), Priority=$PriorityClass, Parallel=$MaxParallel" "Info"
 Write-Status "Excluding: $($ExcludeDirs -join '; ')" "Info"
 
