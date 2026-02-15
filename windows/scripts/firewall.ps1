@@ -531,7 +531,7 @@ if ($HasAD) {
 # ----
 # explorer.exe inventory (allowed Windows + SysWOW64, WinSxS ignored)
 # ----
-#og-ExplorerInventory -Roots @("$env:SystemDrive\")
+Log-ExplorerInventory -Roots @("$env:SystemDrive\")
 
 $ServicePresence = [pscustomobject]@{
     HTTP_IIS = $HasHTTP
